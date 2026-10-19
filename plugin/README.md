@@ -16,7 +16,13 @@ AU / VST3 instrument by Ticco Ross, built on the ISLA Poly-800 synthesis core
   joystick (springs back), volume fader, tune slider, VOICES and CHORUS
   switches, and the full parameter chart (click to select, drag or scroll to
   change). Everything is a host parameter, so automation and presets follow.
-- Key assign: POLY, or HOLD (latches notes until POLY is pressed).
+- Key assign: POLY or CHORD, plus HOLD (sustain pedal = HOLD). CHORD is the chord
+  memory ported from Polytwelve (`Source/KeyLayer.h`): hold 2+ keys and press
+  CHORD (or CHORD MEMORY) to store them; each key then plays the chord
+  transposed, last-note priority, up to the voice count (8 WHOLE / 4 DOUBLE).
+- Chorus: P48 on/off; **Chorus Type** picks Polytwelve's Chorus (default) or
+  Ensemble (`Source/PolyEffects.h`, ported unchanged) or the original BBD
+  chorus in the core; **Chorus Speed** sets rate / ensemble intensity.
 - Joystick, as host parameters (automatable; the panel joystick will drive them):
   - **Joystick X** bends pitch by ±**Bend Range** semitones (1–12, default 2),
     smoothed over ~5 ms.
@@ -74,6 +80,9 @@ parameters.
 juce_core, juce_events and juce_graphics); `docs/panel.png` comes from it.
 
 ## Tests
+
+`tests/chord_test.cpp` checks POLY, CHORD memory (capture, transposition,
+last-note priority, voice limit, MEMORY button) and HOLD.
 
 `tests/joystick_test.cpp` checks that bend moves pitch by exactly the requested
 interval and that joystick up/down modulate pitch/filter (and centred does

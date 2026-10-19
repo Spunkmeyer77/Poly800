@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "PluginEditor.h"
 #include "FactoryPrograms.h"
+#include "ChordNames.h"
 
 using p800::HitKind;
 
@@ -67,10 +68,23 @@ void P800Editor::refreshState()
     s.joyY = getReal ("joyY");
     s.hold = getReal ("hold") > 0.5f;
     s.bendRange = juce::roundToInt (getReal ("bendRange"));
+    s.chordMode = getReal ("keyMode") > 0.5f;
+    s.chorusType = juce::roundToInt (getReal ("chorusType"));
+    s.chorusSpeed = getReal ("chorusSpeed");
+    {
+        int iv[p800::KeyLayer::maxChord], root = 60;
+        const int n = processor.getChord (iv, root);
+        juce::StringArray notes;
+        for (int i = 0; i < n; ++i) notes.add (p800::noteName (root + iv[i]));
+        s.chordName = p800::chordName (iv, n, root);
+        s.chordNotes = notes.joinIntoString (" ");
+    }
 
     const bool changed = s.values != state.values || s.programNumber != state.programNumber
                       || s.volume != state.volume || s.tune != state.tune || s.joyX != state.joyX
-                      || s.joyY != state.joyY || s.hold != state.hold || s.bendRange != state.bendRange;
+                      || s.joyY != state.joyY || s.hold != state.hold || s.bendRange != state.bendRange
+                      || s.chordMode != state.chordMode || s.chordNotes != state.chordNotes
+                      || s.chorusType != state.chorusType || s.chorusSpeed != state.chorusSpeed;
     state = s;
     if (changed)
         repaint();
@@ -140,6 +154,11 @@ void P800Editor::setFromDrag (HitKind kind, juce::Point<float> d)
         const float f = juce::jlimit (0.0f, 1.0f, (d.x - t.getX() - 15.0f) / (t.getWidth() - 30.0f));
         setReal ("tune", f * 200.0f - 100.0f, false);
     }
+    else if (kind == HitKind::chorusSpeed)
+    {
+        const auto t = view.chorusSpeedTrack();
+        setReal ("chorusSpeed", juce::jlimit (0.0f, 1.0f, (d.x - t.getX() - 15.0f) / (t.getWidth() - 30.0f)), false);
+    }
     else if (kind == HitKind::cell)
     {
         // Drag up to increase: one step per 6 px.
@@ -196,8 +215,20 @@ void P800Editor::mouseDown (const juce::MouseEvent& e)
             setReal (paramId (i), state.values[(size_t) i] == 1 ? 0.0f : 1.0f);
             break;
         }
-        case HitKind::poly: setReal ("hold", 0.0f); break;
-        case HitKind::hold: setReal ("hold", 1.0f); break;
+        // POLY also releases HOLD, as on the original. Switching to CHORD with two or
+        // more keys held stores them as the chord (Polytwelve behaviour).
+        case HitKind::poly:  setReal ("keyMode", 0.0f); setReal ("hold", 0.0f); break;
+        case HitKind::chord: setReal ("keyMode", 1.0f); break;
+        case HitKind::hold:  setReal ("hold", state.hold ? 0.0f : 1.0f); break;
+        case HitKind::memory:
+            processor.requestChordMemory();
+            setReal ("keyMode", 1.0f);
+            break;
+        case HitKind::chorusType: setReal ("chorusType", (float) dragHit.index); break;
+        case HitKind::chorusSpeed:
+            param ("chorusSpeed")->beginChangeGesture();
+            setFromDrag (dragHit.kind, d);
+            break;
         case HitKind::progPrev:
             processor.selectProgram ((processor.getCurrentProgram() + factory::numPrograms - 1) % factory::numPrograms);
             break;
@@ -214,6 +245,7 @@ void P800Editor::mouseDrag (const juce::MouseEvent& e)
     switch (dragHit.kind)
     {
         case HitKind::joystick: case HitKind::volume: case HitKind::tune: case HitKind::cell:
+        case HitKind::chorusSpeed:
             setFromDrag (dragHit.kind, toDesign (e.position));
             break;
         default: break;
@@ -233,6 +265,7 @@ void P800Editor::mouseUp (const juce::MouseEvent&)
             break;
         case HitKind::volume: param ("master")->endChangeGesture(); break;
         case HitKind::tune:   param ("tune")->endChangeGesture(); break;
+        case HitKind::chorusSpeed: param ("chorusSpeed")->endChangeGesture(); break;
         case HitKind::cell:   chartParam (dragHit.index)->endChangeGesture(); break;
         default: break;
     }

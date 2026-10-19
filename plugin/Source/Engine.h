@@ -5,6 +5,7 @@
 
 #include "poly800_core.h"
 #include "Decimator2x.h"
+#include "PolyEffects.h"
 #include <algorithm>
 #include <cstdint>
 #include <cstring>
@@ -28,16 +29,31 @@ public:
         workR.assign ((size_t) (maxFrames * factor), 0.0f);
         decL.reset();
         decR.reset();
+        fx.prepare ((float) hostRate);
         haveParams = false;
+    }
+
+    // Chorus type: 0 Polytwelve Chorus, 1 Polytwelve Ensemble, 2 original BBD (in the core).
+    // speed: Chorus rate / Ensemble intensity, 0..1. P48 still switches the chorus on and off.
+    enum ChorusType { polyChorus = 0, polyEnsemble = 1, originalBbd = 2 };
+    void setChorus (int type, float speed)
+    {
+        chorusType = std::clamp (type, 0, 2);
+        chorusSpeed = std::clamp (speed, 0.0f, 1.0f);
     }
 
     bool isPrepared() const { return core != nullptr; }
     int oversampling() const { return factor; }
 
-    void setParams (const Poly800Params& p)
+    void setParams (const Poly800Params& in)
     {
         if (core == nullptr)
             return;
+        // With a Polytwelve chorus the core's own chorus stays off; P48 switches ours.
+        chorusOn = in.chorus_on != 0;
+        Poly800Params p = in;
+        if (chorusType != originalBbd)
+            p.chorus_on = 0;
         if (! haveParams || std::memcmp (&p, &last, sizeof (p)) != 0)
         {
             poly800_core_set_params (core, &p);
@@ -99,6 +115,14 @@ private:
             decL.process (workL.data(), left, n);
             decR.process (workR.data(), right, n);
         }
+
+        // Core chorus is off here, so left == right: run the Polytwelve effect on it.
+        if (chorusOn && chorusType != originalBbd)
+        {
+            const int mode = chorusType == polyEnsemble ? PolyEffects::ensemble : PolyEffects::chorus;
+            for (int i = 0; i < n; ++i)
+                fx.process (0.5f * (left[i] + right[i]), left[i], right[i], mode, chorusSpeed);
+        }
     }
 
     void destroy()
@@ -116,5 +140,9 @@ private:
     Poly800Params last {};
     bool haveParams = false;
     float perfBend = 0.0f, perfDco = 0.0f, perfVcf = 0.0f;
+    PolyEffects fx;
+    int chorusType = polyChorus;
+    float chorusSpeed = 0.4f;
+    bool chorusOn = false;
 };
 } // namespace p800

@@ -78,3 +78,7 @@ if(NOT MSVC)
     target_link_libraries(joystick_test PRIVATE m)
 endif()
 add_test(NAME joystick COMMAND joystick_test)
+
+add_executable(chord_test tests/chord_test.cpp)
+target_include_directories(chord_test PRIVATE Source)
+add_test(NAME chord COMMAND chord_test)

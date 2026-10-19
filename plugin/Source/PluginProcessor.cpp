@@ -21,6 +21,9 @@ P800Processor::P800Processor()
     joyYParam = apvts.getRawParameterValue ("joyY");
     bendRangeParam = apvts.getRawParameterValue ("bendRange");
     holdParam = apvts.getRawParameterValue ("hold");
+    keyModeParam = apvts.getRawParameterValue ("keyMode");
+    chorusTypeParam = apvts.getRawParameterValue ("chorusType");
+    chorusSpeedParam = apvts.getRawParameterValue ("chorusSpeed");
     setCurrentProgram (0);
 }
 
@@ -48,9 +51,18 @@ juce::AudioProcessorValueTreeState::ParameterLayout P800Processor::createLayout(
         juce::ParameterID { "bendRange", 1 }, "Bend Range", 1, 12, 2,
         juce::AudioParameterIntAttributes().withLabel ("st")));
 
-    // Key assign: HOLD latches notes until it is switched back to POLY.
+    // Key assign: POLY or CHORD (chord memory, ported from Polytwelve), plus HOLD.
+    layout.add (std::make_unique<juce::AudioParameterChoice> (
+        juce::ParameterID { "keyMode", 1 }, "Key Assign", juce::StringArray { "Poly", "Chord" }, 0));
     layout.add (std::make_unique<juce::AudioParameterBool> (
         juce::ParameterID { "hold", 1 }, "Hold", false));
+
+    // Chorus: Polytwelve's Chorus or Ensemble, or the original BBD. P48 turns it on/off.
+    layout.add (std::make_unique<juce::AudioParameterChoice> (
+        juce::ParameterID { "chorusType", 1 }, "Chorus Type",
+        juce::StringArray { "Chorus", "Ensemble", "Original" }, 0));
+    layout.add (std::make_unique<juce::AudioParameterFloat> (
+        juce::ParameterID { "chorusSpeed", 1 }, "Chorus Speed / Intensity", 0.0f, 1.0f, 0.4f));
     return layout;
 }
 
@@ -63,6 +75,7 @@ void P800Processor::prepareToPlay (double sampleRate, int samplesPerBlock)
 
 void P800Processor::releaseResources()
 {
+    keys.allNotesOff (sink);
     engine.allNotesOff();
 }
 
@@ -107,18 +120,16 @@ void P800Processor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBu
         return;
     }
 
-    engine.setParams (currentCoreParams());
+    engine.setChorus (juce::roundToInt (chorusTypeParam->load()), chorusSpeedParam->load());
+    const auto coreParams = currentCoreParams();
+    engine.setParams (coreParams);
     updatePerformance();
 
-    const bool holdOn = holdParam->load() > 0.5f;
-    if (holdWasOn && ! holdOn)
-        for (int n = 0; n < 128; ++n)
-            if (latched[(size_t) n])
-            {
-                engine.noteOff (n);
-                latched[(size_t) n] = false;
-            }
-    holdWasOn = holdOn;
+    // Key assign. DOUBLE mode (P18 = 2) has 4 voices, WHOLE has 8.
+    keys.setMode (juce::roundToInt (keyModeParam->load()));
+    keys.setHold (holdParam->load() > 0.5f || sustainPedal);
+    keys.setVoiceLimit (coreParams.dco_mode == 2 ? 4 : 8);
+    keys.update (sink);
 
     float* left = buffer.getWritePointer (0);
     float* right = nullptr;
@@ -144,21 +155,17 @@ void P800Processor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBu
         renderTo (juce::jlimit (pos, numSamples, meta.samplePosition));
         const auto msg = meta.getMessage();
         if (msg.isNoteOn())
-        {
-            latched[(size_t) msg.getNoteNumber()] = false;
-            engine.noteOn (msg.getNoteNumber(), msg.getVelocity());
-        }
+            keys.noteOn (sink, msg.getNoteNumber(), msg.getVelocity());
         else if (msg.isNoteOff())
-        {
-            if (holdOn)
-                latched[(size_t) msg.getNoteNumber()] = true;
-            else
-                engine.noteOff (msg.getNoteNumber());
-        }
+            keys.noteOff (sink, msg.getNoteNumber());
         else if (msg.isAllNotesOff() || msg.isAllSoundOff())
+            keys.allNotesOff (sink);
+        else if (msg.isSustainPedalOn() || msg.isSustainPedalOff())
         {
-            latched.fill (false);
-            engine.allNotesOff();
+            // The sustain pedal works like HOLD.
+            sustainPedal = msg.isSustainPedalOn();
+            keys.setHold (holdParam->load() > 0.5f || sustainPedal);
+            keys.update (sink);
         }
         else if (msg.isPitchWheel())
         {
@@ -214,6 +221,12 @@ void P800Processor::getStateInformation (juce::MemoryBlock& dest)
 {
     auto state = apvts.copyState();
     state.setProperty ("program", currentProgram, nullptr);
+    int iv[p800::KeyLayer::maxChord], root = 60;
+    const int n = keys.getChord (iv, root);
+    juce::StringArray chord;
+    for (int i = 0; i < n; ++i) chord.add (juce::String (iv[i]));
+    state.setProperty ("chordMemory", chord.joinIntoString (","), nullptr);
+    state.setProperty ("chordRoot", root, nullptr);
     if (auto xml = state.createXml())
         copyXmlToBinary (*xml, dest);
 }
@@ -225,6 +238,13 @@ void P800Processor::setStateInformation (const void* data, int size)
         {
             auto state = juce::ValueTree::fromXml (*xml);
             currentProgram = juce::jlimit (0, factory::numPrograms - 1, (int) state.getProperty ("program", 0));
+            const auto chord = juce::StringArray::fromTokens (state.getProperty ("chordMemory", "0,3,7").toString(), ",", "");
+            int iv[p800::KeyLayer::maxChord], count = 0;
+            for (const auto& t : chord)
+                if (count < p800::KeyLayer::maxChord && t.trim().isNotEmpty())
+                    iv[count++] = juce::jlimit (0, 48, t.getIntValue());
+            if (count > 0)
+                keys.setChord (iv, count, (int) state.getProperty ("chordRoot", 60));
             apvts.replaceState (state);
         }
 }

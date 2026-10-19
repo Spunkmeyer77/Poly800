@@ -193,8 +193,10 @@ void PanelView::buildLayout()
     tuneTrackR = { 40, 74, 170, 18 };
     joyBox = { 50, 150, 150, 150 };
     volTrack = { 251, 74, 22, 220 };
-    polyR = { 318, 110, 40, 150 };
-    holdR = { 378, 110, 40, 150 };
+    polyR = { 310, 110, 36, 150 };
+    chordR = { 358, 110, 36, 150 };
+    holdR = { 406, 110, 36, 150 };
+    memoryR = { 310, 314, 132, 26 };
 
     // Programmer.
     display = { 462, 56, 600, 112 };
@@ -210,8 +212,11 @@ void PanelView::buildLayout()
     upR = { 860, 210, 40, 152 };
 
     // Right: performance switches.
-    voicesR = { 1110, 80, 90, 64 };
-    chorusR = { 1240, 80, 90, 64 };
+    voicesR = { 1100, 80, 90, 64 };
+    chorusR = { 1200, 80, 90, 64 };
+    for (int i = 0; i < 3; ++i)
+        chorusTypeR[(size_t) i] = { 1300.0f, 72.0f + (float) i * 26.0f, 100.0f, 22.0f };
+    speedTrack = { 1110, 200, 290, 16 };
 
     // Parameter chart.
     cells.clear();
@@ -248,7 +253,12 @@ Hit PanelView::hitTest (juce::Point<float> p) const
     if (volTrack.expanded (14, 8).contains (p)) return { HitKind::volume };
     if (tuneTrackR.expanded (4, 8).contains (p)) return { HitKind::tune };
     if (polyR.contains (p)) return { HitKind::poly };
+    if (chordR.contains (p)) return { HitKind::chord };
     if (holdR.contains (p)) return { HitKind::hold };
+    if (memoryR.contains (p)) return { HitKind::memory };
+    for (int i = 0; i < 3; ++i)
+        if (chorusTypeR[(size_t) i].contains (p)) return { HitKind::chorusType, i };
+    if (speedTrack.expanded (4, 10).contains (p)) return { HitKind::chorusSpeed };
     if (upR.contains (p)) return { HitKind::valueUp };
     if (downR.contains (p)) return { HitKind::valueDown };
     if (progPrevR.contains (p)) return { HitKind::progPrev };
@@ -281,11 +291,12 @@ void PanelView::paint (juce::Graphics& g, const PanelState& s) const
     drawScrew (g, { panel.getRight() - 13, panel.getBottom() - 13 }, 0.15f);
 
     // Top strip.
-    const auto strip = juce::Rectangle<float> (40, 22, 1360, 22);
-    drawText (g, juce::String ("KEY ASSIGN: ") + (s.hold ? "HOLD" : "POLY") + utf8 ("   |   BEND \xc2\xb1")
-                 + juce::String (s.bendRange) + " ST   |   P-800 v0.1",
+    const auto strip = juce::Rectangle<float> (40, 22, 1335, 22);
+    drawText (g, juce::String ("KEY ASSIGN: ") + (s.chordMode ? "CHORD" : "POLY") + (s.hold ? " + HOLD" : "")
+                 + utf8 ("   |   CHORD MEMORY: ") + s.chordName + " (" + s.chordNotes + ")"
+                 + utf8 ("   |   BEND \xc2\xb1") + juce::String (s.bendRange) + " ST",
               strip, uiFont (13.0f), cDim, juce::Justification::centredLeft);
-    drawText (g, s.programName.toUpperCase(), strip, uiFont (14.0f, true), cCream);
+    drawText (g, s.programName.toUpperCase(), strip, uiFont (14.0f, true), cCream, juce::Justification::centredRight);
 
     // Tune.
     drawText (g, "\xe2\x99\xad  \xc2\xb7  \xc2\xb7  \xc2\xb7  \xc2\xb7  0  \xc2\xb7  \xc2\xb7  \xc2\xb7  \xc2\xb7  \xe2\x99\xaf",
@@ -339,13 +350,19 @@ void PanelView::paint (juce::Graphics& g, const PanelState& s) const
     drawText (g, "VOLUME", volTrack.translated (-30, volTrack.getHeight() + 22).withSize (82, 18), uiFont (13.0f, true), cCream);
 
     // Key assign.
-    for (auto [r, label, on] : { std::tuple { polyR, "POLY", ! s.hold }, std::tuple { holdR, "HOLD", s.hold } })
+    for (auto [r, label, on] : { std::tuple { polyR, "POLY", ! s.chordMode }, std::tuple { chordR, "CHORD", s.chordMode },
+                                 std::tuple { holdR, "HOLD", s.hold } })
     {
         g.setColour (on ? cLed : cLedOff);
         g.fillEllipse (juce::Rectangle<float> (9, 9).withCentre ({ r.getCentreX(), r.getY() - 14 }));
         drawKey (g, r, false, cAccent);
-        drawText (g, label, r.translated (-10, r.getHeight() + 6).withSize (60, 18), uiFont (14.0f, true), cCream);
+        drawText (g, label, r.translated (-12, r.getHeight() + 6).withSize (60, 18), uiFont (13.0f, true), cCream);
     }
+    g.setColour (juce::Colour (0xff2b2c2f));
+    g.fillRoundedRectangle (memoryR, 3.0f);
+    g.setColour (juce::Colours::black);
+    g.drawRoundedRectangle (memoryR, 3.0f, 1.0f);
+    drawText (g, "CHORD MEMORY", memoryR, uiFont (12.0f, true), s.chordMode ? cAccent : cCream);
 
     paintDisplay (g, s);
 
@@ -377,18 +394,41 @@ void PanelView::paint (juce::Graphics& g, const PanelState& s) const
         drawText (g, sw.bot, { slot.getRight() + 6, slot.getBottom() - 16, 60, 16 }, uiFont (12.0f), cDim, juce::Justification::centredLeft);
         drawText (g, sw.label, { sw.r.getX() - 10, slot.getBottom() + 8, 70, 18 }, uiFont (13.0f, true), cCream);
     }
-    g.setFont (uiFont (13.0f));
+    const char* typeNames[3] = { "CHORUS", "ENSEMBLE", "ORIGINAL" };
+    for (int i = 0; i < 3; ++i)
+    {
+        const auto& r = chorusTypeR[(size_t) i];
+        const bool sel = s.chorusType == i;
+        g.setColour (sel ? cAccent : juce::Colour (0xff2b2c2f));
+        g.fillRoundedRectangle (r, 3.0f);
+        g.setColour (juce::Colours::black);
+        g.drawRoundedRectangle (r, 3.0f, 1.0f);
+        drawText (g, typeNames[i], r, uiFont (11.0f, true), sel ? cDark : cCream);
+    }
+    drawText (g, "TYPE", { 1300, 152, 100, 16 }, uiFont (12.0f, true), cCream);
+
+    drawSlot (g, speedTrack);
+    const float spX = speedTrack.getX() + 15 + s.chorusSpeed * (speedTrack.getWidth() - 30);
+    drawCap (g, juce::Rectangle<float> (30, 22).withCentre ({ spX, speedTrack.getCentreY() }), false);
+    drawText (g, s.chorusType == 1 ? "ENSEMBLE INTENSITY" : "CHORUS SPEED",
+              speedTrack.translated (0, 22).withHeight (18), uiFont (13.0f, true),
+              s.chorusType == 2 ? cDim : cCream);
+    if (s.chorusType == 2)
+        drawText (g, "(fixed on the original chorus)", speedTrack.translated (0, 40).withHeight (16), uiFont (11.0f), cDim);
+
+    g.setFont (uiFont (12.0f));
     g.setColour (cDim);
-    g.drawFittedText ("Click a chart cell, then UP / DOWN.\nDrag or scroll a cell to change it.\n"
-                      "Keypad: two digits pick a parameter,\nor a program in PROG mode.",
-                      juce::Rectangle<int> (1110, 200, 290, 90), juce::Justification::topLeft, 5, 1.0f);
+    g.drawFittedText ("CHORD: hold a chord and press CHORD (or CHORD MEMORY).\n"
+                      "Each key then plays it transposed. Pedal = HOLD.\n"
+                      "Chart: click a cell, drag or scroll to change it.",
+                      juce::Rectangle<int> (1100, 284, 310, 60), juce::Justification::topLeft, 4, 1.0f);
 
     // Section labels.
     drawSectionLabel (g, { 34, 386, 190, 22 }, "JOYSTICK / TUNE", false);
     drawSectionLabel (g, { 232, 386, 64, 22 }, "VOL", false);
-    drawSectionLabel (g, { 304, 386, 128, 22 }, "KEY ASSIGN", false);
+    drawSectionLabel (g, { 304, 386, 146, 22 }, "KEY ASSIGN", false);
     drawSectionLabel (g, { 462, 386, 600, 22 }, utf8 ("PROGRAMMER \xc2\xb7 ") + (s.progEntry ? "PROGRAM ENTRY" : "PARAMETER ENTRY"), true);
-    drawSectionLabel (g, { 1090, 386, 320, 22 }, "PERFORMANCE", false);
+    drawSectionLabel (g, { 1090, 386, 320, 22 }, "PERFORMANCE / CHORUS", false);
 
     paintChart (g, s);
 }

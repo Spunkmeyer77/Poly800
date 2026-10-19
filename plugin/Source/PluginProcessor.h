@@ -4,6 +4,7 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 #include "ParamSpec.h"
 #include "Engine.h"
+#include "KeyLayer.h"
 
 class P800Processor : public juce::AudioProcessor
 {
@@ -38,6 +39,11 @@ public:
     // Message thread: switch program and tell the host.
     void selectProgram (int index);
 
+    // Chord memory (panel MEMORY / CHORD buttons and readout).
+    void requestChordMemory()                       { keys.requestChordCapture(); }
+    int  getChord (int* intervals, int& root) const { return keys.getChord (intervals, root); }
+    int  getChordVersion() const                    { return keys.getChordVersion(); }
+
     juce::AudioProcessorValueTreeState apvts;
 
 private:
@@ -53,8 +59,20 @@ private:
     std::atomic<float>* joyYParam = nullptr;
     std::atomic<float>* bendRangeParam = nullptr;
     std::atomic<float>* holdParam = nullptr;
-    bool holdWasOn = false;
-    std::array<bool, 128> latched {}; // notes released while HOLD is on
+    std::atomic<float>* keyModeParam = nullptr;
+    std::atomic<float>* chorusTypeParam = nullptr;
+    std::atomic<float>* chorusSpeedParam = nullptr;
+    bool sustainPedal = false;
+
+    struct EngineSink : p800::KeyLayer::Sink
+    {
+        explicit EngineSink (p800::Engine& e) : engine (e) {}
+        void keyOn (int note, int velocity) override { engine.noteOn (note, velocity); }
+        void keyOff (int note) override { engine.noteOff (note); }
+        p800::Engine& engine;
+    };
+    p800::KeyLayer keys;
+    EngineSink sink { engine };
     float midiBend = 0.0f;    // pitch wheel, -1..1
     float midiModWheel = 0.0f; // CC1, 0..1
     int currentProgram = 0;

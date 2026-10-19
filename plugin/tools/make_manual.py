@@ -157,9 +157,12 @@ def build():
         ["Joystick / Tune", "<b>Tune</b> slider (±100 cents, double-click to reset). <b>Joystick</b>: left/right bends pitch, "
                             "up adds vibrato (MG to DCO), down adds filter wobble (MG to VCF). It springs back when released."],
         ["Volume", "Master output level."],
-        ["Key assign", "<b>POLY</b>: normal playing. <b>HOLD</b>: notes keep sounding after you let go, until you press POLY."],
+        ["Key assign", "<b>POLY</b>: normal playing. <b>CHORD</b>: chord memory, each key plays a stored chord (section 4). "
+                       "<b>HOLD</b>: notes keep sounding after you let go (the sustain pedal does the same). "
+                       "<b>CHORD MEMORY</b> stores the keys you are holding as the chord."],
         ["Programmer", "LED display (program, parameter, value), keypad, PROG/PARA key, <b>DOWN</b> / <b>UP</b>."],
-        ["Performance", "<b>VOICES</b> switch (8 voices WHOLE / 4 voices DOUBLE, same as P18) and <b>CHORUS</b> on/off (P48)."],
+        ["Performance / Chorus", "<b>VOICES</b> switch (8 voices WHOLE / 4 voices DOUBLE, same as P18), <b>CHORUS</b> on/off (P48), "
+                                "chorus <b>TYPE</b> (Chorus, Ensemble or Original) and the <b>SPEED</b> slider (chorus rate, or ensemble intensity)."],
         ["Parameter chart", "Every sound parameter, laid out like the printed chart on the original. Each cell shows its name, "
                             "number, range and current value."],
     ], [32 * mm, W - 32 * mm]))
@@ -195,6 +198,24 @@ def build():
         "Your keyboard's <b>pitch wheel</b> adds to joystick X, and its <b>mod wheel</b> (CC1) works like pushing the joystick up.",
         "Joystick X and Y are host parameters, so you can automate them.",
     ])
+    s += [Paragraph("Chord memory", h2), Paragraph(
+        "Like the original's chord memory, CHORD mode plays a whole stored chord from a single key. It works the same "
+        "way as in Polytwelve:", body)]
+    s += bullets([
+        "Hold the chord you want (two or more keys) and press <b>CHORD</b>. The keys are stored, lowest note first.",
+        "Or, already in CHORD mode, hold the keys and press <b>CHORD MEMORY</b>. With HOLD on you can play the notes "
+        "one at a time first, then press CHORD MEMORY.",
+        "Now each key plays the stored chord transposed to it. The most recent key wins (last-note priority); release "
+        "it and the chord returns to the key still held.",
+        "The stored chord and its name appear in the top strip, and it is saved with your session. Pressing CHORD "
+        "with fewer than two keys held keeps the previous chord.",
+        "A chord can have up to 8 notes in WHOLE mode; in DOUBLE mode (4 voices) its lowest 4 notes play.",
+        "Press <b>POLY</b> to go back to normal playing (POLY also switches HOLD off).",
+    ])
+    s += [Paragraph("Chorus", h2), Paragraph(
+        "P48 or the CHORUS switch turns the chorus on and off. <b>TYPE</b> chooses its sound: <b>Chorus</b> (default) and "
+        "<b>Ensemble</b> are the chorus and ensemble from Polytwelve; <b>Original</b> is the reconstruction's fixed BBD "
+        "chorus. The <b>SPEED</b> slider sets the chorus rate (about 0.1 to 4 Hz), or the depth for Ensemble.", body)]
     s += [Paragraph("Voices and the shared filter", h2), Paragraph(
         "WHOLE mode gives 8 voices with DCO 1 only; DOUBLE mode gives 4 voices, each with DCO 1 and DCO 2 for fatter, "
         "detuned or interval sounds. All voices go through <b>one shared filter</b>, as on the original, so a new note "
@@ -217,7 +238,10 @@ def build():
         ["Tune", "±100 cents", "Fine tuning (the panel slider)."],
         ["Joystick X / Joystick Y", "-1 to +1", "The panel joystick; automatable."],
         ["Bend Range", "1-12 st", "How far joystick X and the pitch wheel bend."],
-        ["Hold", "off / on", "Key assign HOLD."],
+        ["Key Assign", "Poly / Chord", "POLY or CHORD (chord memory)."],
+        ["Hold", "off / on", "Key assign HOLD (sustain pedal too)."],
+        ["Chorus Type", "Chorus / Ensemble / Original", "Which chorus P48 switches on."],
+        ["Chorus Speed / Intensity", "0-1", "Chorus rate, or Ensemble intensity."],
     ], [45 * mm, 25 * mm, W - 70 * mm]))
 
     # 6. Factory programs.
@@ -241,9 +265,9 @@ def build():
     s += bullets([
         "Runs internally at 88.2/96 kHz at lower host rates, because the engine's lower-rate filter branch becomes "
         "unstable at full resonance.",
-        "Adds joystick bend and modulation, HOLD, and the hardware-style panel.",
-        "Not included: the original's sequencer and chord memory (P86-P88 and KEY ASSIGN CHORD), and cassette or "
-        "MIDI SysEx program transfer.",
+        "Adds joystick bend and modulation, HOLD, the hardware-style panel, and the chord memory and "
+        "chorus/ensemble from Polytwelve (Ticco Ross).",
+        "Not included: the original's sequencer (P86-P88), and cassette or MIDI SysEx program transfer.",
     ])
     s += [Paragraph("Licence", h2), Paragraph(
         "P-800 is free software under the <b>GNU General Public License v3.0 or later</b>. You may use, study, share and "
