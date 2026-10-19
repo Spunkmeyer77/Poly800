@@ -1,0 +1,52 @@
+# TRoss 800
+
+AU / VST3 instrument by Ticco Ross, built on the ISLA Poly-800 synthesis core
+(`../src`). GPL-3.0-or-later, like the core.
+
+## Status: step 1 — playable engine
+
+- All 47 stock Poly-800 sound parameters (P11–P84) exposed as host parameters,
+  named by their original numbers.
+- The 64 MkI factory programs as host programs/presets.
+- Volume and Tune.
+- JUCE's generic editor for now; the hardware panel comes in step 3.
+- Joystick (bend / DCO mod / VCF mod) not wired yet — the core has no inputs
+  for them; step 2 adds them.
+
+## Wrapper notes (things the core does that the wrapper handles)
+
+- **The core adds into its output buffers** (`+=`) rather than overwriting.
+  `Engine` always clears before rendering.
+- **The core is only stable on its ≥88 kHz filter path.** Below 88 kHz it uses a
+  Bristol 2x branch that self-oscillates ~200x too loud at full resonance
+  (factory program 88 "UFO Swoop" blows up). `Engine` therefore runs the core at
+  2x the host rate (88.2/96 kHz) at 44.1/48 kHz hosts and decimates with a
+  95-tap FIR, so every host rate uses the validated path and sounds the same.
+- **The core's output is hot.** Volume maps to `master_gain = volume × 0.15`;
+  the default (0.35) puts a 4-note chord on the loudest factory program at
+  about 0 dBFS.
+
+## Build
+
+macOS (AU + VST3):
+
+```sh
+python3 plugin/tools/gen_factory_header.py   # only if factory/*.csv changed
+cmake -S plugin -B plugin/build -G Xcode -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64"
+cmake --build plugin/build --config Release
+ctest --test-dir plugin/build -C Release --output-on-failure
+```
+
+JUCE 8.0.4 is fetched automatically, or pass `-DJUCE_DIR=/path/to/JUCE`.
+Plugins land in `plugin/build/TRoss800_artefacts/Release/`.
+
+GitHub Actions (`.github/workflows/tross800-macos.yml`) builds a universal
+binary, runs the factory test and uploads an unsigned `.pkg` (plus any PDF in
+`plugin/docs/`).
+
+## Test
+
+`tests/factory_render_test.cpp` renders a chord through all 64 factory
+programs at 44.1, 48 and 96 kHz through the same `Engine` and parameter
+mapping the plugin uses, and checks for finite, audible, non-clipping output
+with matching levels across sample rates.
