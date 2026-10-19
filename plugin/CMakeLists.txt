@@ -22,6 +22,8 @@ endif()
 set(P800_FORMATS VST3)
 if(APPLE)
     list(APPEND P800_FORMATS AU)
+elseif(UNIX)
+    list(APPEND P800_FORMATS LV2)
 endif()
 
 juce_add_plugin(P800
@@ -37,6 +39,7 @@ juce_add_plugin(P800
     EDITOR_WANTS_KEYBOARD_FOCUS FALSE
     AU_MAIN_TYPE kAudioUnitType_MusicDevice
     VST3_CATEGORIES Instrument Synth
+    LV2URI https://github.com/Spunkmeyer77/Poly800
     COPY_PLUGIN_AFTER_BUILD FALSE
     FORMATS ${P800_FORMATS})
 

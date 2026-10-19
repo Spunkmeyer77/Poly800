@@ -1,0 +1,86 @@
+# Builds P-800 for Windows (VST3 + Inno Setup installer) and Linux (VST3 + LV2 tarball).
+name: P-800 Windows and Linux builds
+
+on:
+  push:
+    paths: [ "plugin/**", "src/**", "factory/**", ".github/workflows/poly800-windows-linux.yml" ]
+  workflow_dispatch:
+
+jobs:
+  windows:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Regenerate factory programs header
+        run: python plugin/tools/gen_factory_header.py
+
+      - name: Configure
+        run: cmake -S plugin -B plugin/build -G "Visual Studio 17 2022" -A x64
+
+      - name: Build plugin and tests
+        run: cmake --build plugin/build --config Release --parallel
+
+      - name: Run tests
+        run: ctest --test-dir plugin/build -C Release --output-on-failure
+
+      - name: Build installer
+        shell: pwsh
+        run: |
+          $version = (Select-String -Path plugin/CMakeLists.txt -Pattern 'VERSION ([0-9.]+)').Matches[0].Groups[1].Value
+          if (-not (Get-Command iscc -ErrorAction SilentlyContinue)) { choco install innosetup -y --no-progress }
+          $iscc = (Get-Command iscc -ErrorAction SilentlyContinue).Source
+          if (-not $iscc) { $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" }
+          New-Item -ItemType Directory -Force dist | Out-Null
+          & $iscc "/DAppVersion=$version" "/DSrcDir=$env:GITHUB_WORKSPACE" plugin\installer\windows\P-800.iss
+          Copy-Item "plugin\docs\P-800 Manual.pdf" dist\
+
+      - name: Upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: P-800-Windows
+          path: dist/*
+
+  linux:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libasound2-dev libx11-dev libxrandr-dev libxinerama-dev \
+            libxcursor-dev libxext-dev libfreetype-dev libfontconfig1-dev libgl1-mesa-dev
+
+      - name: Regenerate factory programs header
+        run: python3 plugin/tools/gen_factory_header.py
+
+      - name: Configure
+        run: cmake -S plugin -B plugin/build -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build plugin and tests
+        run: cmake --build plugin/build --parallel
+
+      - name: Run tests
+        run: ctest --test-dir plugin/build --output-on-failure
+
+      - name: Package tarball
+        run: |
+          set -e
+          VERSION=$(grep -m1 -oE 'VERSION [0-9.]+' plugin/CMakeLists.txt | cut -d' ' -f2)
+          ART=plugin/build/P800_artefacts/Release
+          [ -d "$ART" ] || ART=plugin/build/P800_artefacts
+          PKG="P-800 $VERSION Linux x86_64"
+          mkdir -p "dist/$PKG"
+          cp -R "$ART/VST3/P-800.vst3" "$ART/LV2/P-800.lv2" "dist/$PKG/"
+          cp plugin/installer/linux/install.sh "plugin/docs/P-800 Manual.pdf" LICENSE "dist/$PKG/"
+          chmod +x "dist/$PKG/install.sh"
+          tar -C dist -czf "dist/$PKG.tar.gz" "$PKG"
+          rm -rf "dist/$PKG"
+          cp "plugin/docs/P-800 Manual.pdf" dist/
+
+      - name: Upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: P-800-Linux
+          path: dist/*
