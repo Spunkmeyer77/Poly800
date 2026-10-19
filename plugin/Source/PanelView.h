@@ -28,6 +28,7 @@ struct PanelState
     juce::String chordNotes { "C3 Eb3 G3" };
     int chorusType = 0;                     // 0 Chorus, 1 Ensemble, 2 Original
     float chorusSpeed = 0.4f;               // 0..1
+    juce::String version { "0.2.0" };       // set from JucePlugin_VersionString by the editor
 };
 
 enum class HitKind

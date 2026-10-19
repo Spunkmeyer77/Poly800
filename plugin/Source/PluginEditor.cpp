@@ -21,6 +21,7 @@ P800Editor::P800Editor (P800Processor& p)
     setSize (1080, 600);
 
     state.selectedParam = p800::PanelView::indexOfParam (41);
+    state.version = JucePlugin_VersionString;
     refreshState();
     startTimerHz (30);
 }

@@ -446,6 +446,8 @@ void PanelView::paintDisplay (juce::Graphics& g, const PanelState& s) const
               juce::Justification::centredLeft);
     drawText (g, "P-800", { display.getX() + 18, display.getY() + 42, 200, 46 }, uiFont (40.0f, true),
               juce::Colour (0xffd8d0bb), juce::Justification::centredLeft);
+    drawText (g, "v" + s.version, { display.getX() + 20, display.getY() + 88, 200, 14 }, uiFont (11.0f), cDim,
+              juce::Justification::centredLeft);
 
     const juce::String buf = s.entryBuffer.isEmpty() ? juce::String() : s.entryBuffer + "-";
     const int sel = s.selectedParam;

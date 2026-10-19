@@ -3,6 +3,7 @@
 """Builds plugin/docs/P-800 Manual.pdf (reportlab). Run from the repo root."""
 import csv
 import pathlib
+import re
 
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_CENTER
@@ -15,7 +16,8 @@ from reportlab.platypus import (Image, KeepTogether, PageBreak, Paragraph,
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 DOCS = ROOT / "plugin" / "docs"
 OUT = DOCS / "P-800 Manual.pdf"
-VERSION = "0.1"
+# Version comes from plugin/CMakeLists.txt (project VERSION), the single source of truth.
+VERSION = re.search(r"project\(P800 VERSION ([0-9.]+)", (ROOT / "plugin" / "CMakeLists.txt").read_text()).group(1)
 
 ACCENT = colors.HexColor("#c8741c")
 INK = colors.HexColor("#1d1d1f")
