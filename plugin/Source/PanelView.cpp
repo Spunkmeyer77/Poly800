@@ -132,7 +132,7 @@ std::vector<GroupDef> rowOne()
         { "NOISE", { { 33, "LEVEL", "15", "0" } } },
         { "VCF", { { 41, "CUTOFF", "99", "0" }, { 42, "RESO.", "15", "0" }, { 43, "KBD", "2 FULL", "0 OFF" },
                    { 44, "POLAR.", "2 POS", "1 NEG" }, { 45, "EG INT", "15", "0" }, { 46, "TRIG.", "2 MULTI", "1 SNGL" } } },
-        { "CHOR.", { { 48, "ON/OFF", "ON", "OFF" } } },
+        { "FX", { { 48, "ON/OFF", "ON", "OFF" } } },
     };
 }
 
@@ -385,7 +385,7 @@ void PanelView::paint (juce::Graphics& g, const PanelState& s) const
     const int voicesIdx = indexOfParam (18), chorusIdx = indexOfParam (48);
     struct Sw { juce::Rectangle<float> r; const char* label; const char* top; const char* bot; bool up; };
     for (const auto& sw : { Sw { voicesR, "VOICES", "4 DBL", "8 WHL", s.values[(size_t) voicesIdx] == 2 },
-                            Sw { chorusR, "CHORUS", "ON", "OFF", s.values[(size_t) chorusIdx] == 1 } })
+                            Sw { chorusR, "EFFECT", "ON", "OFF", s.values[(size_t) chorusIdx] == 1 } })
     {
         const auto slot = juce::Rectangle<float> (22, 56).withPosition (sw.r.getX(), sw.r.getY());
         drawSlot (g, slot);
@@ -394,7 +394,7 @@ void PanelView::paint (juce::Graphics& g, const PanelState& s) const
         drawText (g, sw.bot, { slot.getRight() + 6, slot.getBottom() - 16, 60, 16 }, uiFont (12.0f), cDim, juce::Justification::centredLeft);
         drawText (g, sw.label, { sw.r.getX() - 10, slot.getBottom() + 8, 70, 18 }, uiFont (13.0f, true), cCream);
     }
-    const char* typeNames[3] = { "CHORUS", "ENSEMBLE", "ORIGINAL" };
+    const char* typeNames[3] = { "CHORUS", "PHASER", "ENSEMBLE" };
     for (int i = 0; i < 3; ++i)
     {
         const auto& r = chorusTypeR[(size_t) i];
@@ -410,25 +410,16 @@ void PanelView::paint (juce::Graphics& g, const PanelState& s) const
     drawSlot (g, speedTrack);
     const float spX = speedTrack.getX() + 15 + s.chorusSpeed * (speedTrack.getWidth() - 30);
     drawCap (g, juce::Rectangle<float> (30, 22).withCentre ({ spX, speedTrack.getCentreY() }), false);
-    drawText (g, s.chorusType == 1 ? "ENSEMBLE INTENSITY" : "CHORUS SPEED",
-              speedTrack.translated (0, 22).withHeight (18), uiFont (13.0f, true),
-              s.chorusType == 2 ? cDim : cCream);
-    if (s.chorusType == 2)
-        drawText (g, "(fixed on the original chorus)", speedTrack.translated (0, 40).withHeight (16), uiFont (11.0f), cDim);
-
-    g.setFont (uiFont (12.0f));
-    g.setColour (cDim);
-    g.drawFittedText ("CHORD: hold a chord and press CHORD (or CHORD MEMORY).\n"
-                      "Each key then plays it transposed. Pedal = HOLD.\n"
-                      "Chart: click a cell, drag or scroll to change it.",
-                      juce::Rectangle<int> (1100, 284, 310, 60), juce::Justification::topLeft, 4, 1.0f);
+    const char* speedNames[3] = { "CHORUS SPEED", "PHASER SPEED", "ENSEMBLE INTENSITY" };
+    drawText (g, speedNames[juce::jlimit (0, 2, s.chorusType)], speedTrack.translated (0, 22).withHeight (18),
+              uiFont (13.0f, true), cCream);
 
     // Section labels.
     drawSectionLabel (g, { 34, 386, 190, 22 }, "JOYSTICK / TUNE", false);
     drawSectionLabel (g, { 232, 386, 64, 22 }, "VOL", false);
     drawSectionLabel (g, { 304, 386, 146, 22 }, "KEY ASSIGN", false);
     drawSectionLabel (g, { 462, 386, 600, 22 }, utf8 ("PROGRAMMER \xc2\xb7 ") + (s.progEntry ? "PROGRAM ENTRY" : "PARAMETER ENTRY"), true);
-    drawSectionLabel (g, { 1090, 386, 320, 22 }, "PERFORMANCE / CHORUS", false);
+    drawSectionLabel (g, { 1090, 386, 320, 22 }, "PERFORMANCE / EFFECTS", false);
 
     paintChart (g, s);
 }

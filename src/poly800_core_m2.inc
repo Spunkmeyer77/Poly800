@@ -473,11 +473,18 @@ static float shared_filter_tick(Poly800Core* core,
     const float resonance = core->derived.filter_resonance;
     float coff;
 
-    if (tracking <= 0.0f) {
-        coff = cutoff * cutoff * (float)(20000.0 / core->sample_rate);
-    } else {
+    /*
+     * P-800 fix: keyboard tracking offsets the cutoff instead of replacing it.
+     * The Bristol-derived law made the cutoff 4 x note frequency x P41, which
+     * pinned the filter near the played pitch so P41 barely did anything with
+     * P43 = 1/2 (42 of the 64 factory programs). Here P41 keeps the untracked
+     * law and tracking scales it by the highest note's distance from middle C:
+     * full (P43 = 2) follows 1 octave per octave, half (P43 = 1) half that.
+     */
+    coff = cutoff * cutoff * (float)(20000.0 / core->sample_rate);
+    if (tracking > 0.0f) {
         const double cfreq = core->note_freq[clampi(highest_note, 0, 127)];
-        coff = (float)(tracking * cutoff * 4.0 * cfreq / core->sample_rate);
+        coff *= (float)pow(cfreq / core->note_freq[60], (double)tracking);
     }
 
     /*

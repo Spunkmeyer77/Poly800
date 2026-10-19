@@ -26,9 +26,9 @@ struct PanelState
     bool chordMode = false;
     juce::String chordName { "Cm" };        // stored chord, e.g. "Cm"
     juce::String chordNotes { "C3 Eb3 G3" };
-    int chorusType = 0;                     // 0 Chorus, 1 Ensemble, 2 Original
+    int chorusType = 0;                     // effect: 0 Chorus, 1 Phaser, 2 Ensemble
     float chorusSpeed = 0.4f;               // 0..1
-    juce::String version { "0.2.0" };       // set from JucePlugin_VersionString by the editor
+    juce::String version { "0.3.0" };       // set from JucePlugin_VersionString by the editor
 };
 
 enum class HitKind

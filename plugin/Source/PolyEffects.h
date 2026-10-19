@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Chorus and Ensemble, ported unchanged from the Polytwelve synth (Ticco Ross,
-// Source/dsp/PolysixEngine.h, Effects modes 1 and 3). Mono in, stereo out.
+// Chorus, Phaser and Ensemble, ported unchanged from the Polytwelve synth (Ticco Ross,
+// Source/dsp/PolysixEngine.h, Effects modes 1-3). Mono in, stereo out.
 #pragma once
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <vector>
 
@@ -46,7 +47,7 @@ struct DelayLine
 class PolyEffects
 {
 public:
-    enum Mode { chorus = 1, ensemble = 3 }; // Polytwelve's mode numbers
+    enum Mode { chorus = 1, phaser = 2, ensemble = 3 }; // Polytwelve's mode numbers
 
     void prepare (float sampleRate)
     {
@@ -58,9 +59,17 @@ public:
     void reset()
     {
         dl.clear(); lpL = lpR = 0.0f; lfo = lfoFast = 0.0f;
+        fbL = fbR = 0.0f; apL.fill (0.0f); apR.fill (0.0f);
     }
 
-    // knob: speed for Chorus, intensity for Ensemble (0..1), as in Polytwelve.
+    static float allpass (float x, float a, float& z) // first-order allpass
+    {
+        const float y = a * x + z;
+        z = x - a * y;
+        return y;
+    }
+
+    // knob: speed for Chorus and Phaser, intensity for Ensemble (0..1), as in Polytwelve.
     void process (float in, float& L, float& R, int mode, float knob)
     {
         using namespace ptw;
@@ -80,6 +89,24 @@ public:
             lpL += (wl - lpL) * bbdLp; lpR += (wr - lpR) * bbdLp;
             L = 0.7f * in + 0.7f * lpL;
             R = 0.7f * in + 0.7f * lpR;
+        }
+        else if (mode == phaser)
+        {
+            const float rate = 0.05f * std::exp2 (knob * 7.0f); // 0.05 .. 6.4 Hz
+            lfo += rate * invSr; if (lfo >= 1.0f) lfo -= 1.0f;
+            float ph2 = lfo + 0.25f; if (ph2 >= 1.0f) ph2 -= 1.0f;
+            auto coefFor = [&] (float tri)
+            {
+                const float fc = 250.0f * std::exp2 (2.2f * (tri + 1.0f)); // 250 Hz .. ~5 kHz
+                const float tn = std::tan (kPi * std::min (fc, 0.45f * sr) * invSr);
+                return (tn - 1.0f) / (tn + 1.0f);
+            };
+            const float aL = coefFor (triFromPhase (lfo)), aR = coefFor (triFromPhase (ph2));
+            float xl = in + 0.45f * fbL, xr = in + 0.45f * fbR;
+            for (int i = 0; i < 6; ++i) { xl = allpass (xl, aL, apL[(size_t) i]); xr = allpass (xr, aR, apR[(size_t) i]); }
+            fbL = xl; fbR = xr;
+            L = 0.6f * (in + xl);
+            R = 0.6f * (in + xr);
         }
         else if (mode == ensemble)
         {
@@ -112,6 +139,8 @@ private:
     ptw::DelayLine dl;
     float lfo = 0.0f, lfoFast = 0.0f;
     float lpL = 0.0f, lpR = 0.0f;
+    std::array<float, 6> apL {}, apR {};
+    float fbL = 0.0f, fbR = 0.0f;
     int lastMode = -1;
 };
 } // namespace p800

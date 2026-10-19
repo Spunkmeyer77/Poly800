@@ -57,12 +57,13 @@ juce::AudioProcessorValueTreeState::ParameterLayout P800Processor::createLayout(
     layout.add (std::make_unique<juce::AudioParameterBool> (
         juce::ParameterID { "hold", 1 }, "Hold", false));
 
-    // Chorus: Polytwelve's Chorus or Ensemble, or the original BBD. P48 turns it on/off.
+    // Effects, the same as Polytwelve: Chorus, Phaser or Ensemble. P48 turns the effect on/off.
+    // (Parameter IDs kept from 0.2.0 so saved sessions still load.)
     layout.add (std::make_unique<juce::AudioParameterChoice> (
-        juce::ParameterID { "chorusType", 1 }, "Chorus Type",
-        juce::StringArray { "Chorus", "Ensemble", "Original" }, 0));
+        juce::ParameterID { "chorusType", 1 }, "Effect Type",
+        juce::StringArray { "Chorus", "Phaser", "Ensemble" }, 0));
     layout.add (std::make_unique<juce::AudioParameterFloat> (
-        juce::ParameterID { "chorusSpeed", 1 }, "Chorus Speed / Intensity", 0.0f, 1.0f, 0.4f));
+        juce::ParameterID { "chorusSpeed", 1 }, "Effect Speed / Intensity", 0.0f, 1.0f, 0.4f));
     return layout;
 }
 
@@ -120,7 +121,7 @@ void P800Processor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBu
         return;
     }
 
-    engine.setChorus (juce::roundToInt (chorusTypeParam->load()), chorusSpeedParam->load());
+    engine.setEffect (juce::roundToInt (chorusTypeParam->load()), chorusSpeedParam->load());
     const auto coreParams = currentCoreParams();
     engine.setParams (coreParams);
     updatePerformance();

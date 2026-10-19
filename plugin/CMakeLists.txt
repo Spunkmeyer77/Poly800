@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # P-800 - AU/VST3 wrapper around the ISLA Poly-800 core.
 cmake_minimum_required(VERSION 3.22)
-project(P800 VERSION 0.2.0 LANGUAGES C CXX)
+project(P800 VERSION 0.3.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_OSX_DEPLOYMENT_TARGET "11.0" CACHE STRING "")
@@ -82,3 +82,17 @@ add_test(NAME joystick COMMAND joystick_test)
 add_executable(chord_test tests/chord_test.cpp)
 target_include_directories(chord_test PRIVATE Source)
 add_test(NAME chord COMMAND chord_test)
+
+add_executable(filter_test tests/filter_test.cpp ${CORE_DIR}/poly800_core_m6.c)
+target_include_directories(filter_test PRIVATE ${CORE_DIR} Source)
+if(NOT MSVC)
+    target_link_libraries(filter_test PRIVATE m)
+endif()
+add_test(NAME filter COMMAND filter_test)
+
+add_executable(effects_test tests/effects_test.cpp ${CORE_DIR}/poly800_core_m6.c)
+target_include_directories(effects_test PRIVATE ${CORE_DIR} Source)
+if(NOT MSVC)
+    target_link_libraries(effects_test PRIVATE m)
+endif()
+add_test(NAME effects COMMAND effects_test)

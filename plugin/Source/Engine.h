@@ -33,13 +33,13 @@ public:
         haveParams = false;
     }
 
-    // Chorus type: 0 Polytwelve Chorus, 1 Polytwelve Ensemble, 2 original BBD (in the core).
-    // speed: Chorus rate / Ensemble intensity, 0..1. P48 still switches the chorus on and off.
-    enum ChorusType { polyChorus = 0, polyEnsemble = 1, originalBbd = 2 };
-    void setChorus (int type, float speed)
+    // Effect type, as in Polytwelve: 0 Chorus, 1 Phaser, 2 Ensemble.
+    // speed: Chorus/Phaser rate or Ensemble intensity, 0..1. P48 switches the effect on and off.
+    enum EffectType { fxChorus = 0, fxPhaser = 1, fxEnsemble = 2 };
+    void setEffect (int type, float speed)
     {
-        chorusType = std::clamp (type, 0, 2);
-        chorusSpeed = std::clamp (speed, 0.0f, 1.0f);
+        effectType = std::clamp (type, 0, 2);
+        effectSpeed = std::clamp (speed, 0.0f, 1.0f);
     }
 
     bool isPrepared() const { return core != nullptr; }
@@ -49,11 +49,10 @@ public:
     {
         if (core == nullptr)
             return;
-        // With a Polytwelve chorus the core's own chorus stays off; P48 switches ours.
-        chorusOn = in.chorus_on != 0;
+        // The core's own chorus is never used; P48 switches the Polytwelve effect.
+        effectOn = in.chorus_on != 0;
         Poly800Params p = in;
-        if (chorusType != originalBbd)
-            p.chorus_on = 0;
+        p.chorus_on = 0;
         if (! haveParams || std::memcmp (&p, &last, sizeof (p)) != 0)
         {
             poly800_core_set_params (core, &p);
@@ -116,12 +115,13 @@ private:
             decR.process (workR.data(), right, n);
         }
 
-        // Core chorus is off here, so left == right: run the Polytwelve effect on it.
-        if (chorusOn && chorusType != originalBbd)
+        // The core's chorus is off, so left == right: run the Polytwelve effect on it.
+        if (effectOn)
         {
-            const int mode = chorusType == polyEnsemble ? PolyEffects::ensemble : PolyEffects::chorus;
+            const int mode = effectType == fxPhaser ? PolyEffects::phaser
+                           : effectType == fxEnsemble ? PolyEffects::ensemble : PolyEffects::chorus;
             for (int i = 0; i < n; ++i)
-                fx.process (0.5f * (left[i] + right[i]), left[i], right[i], mode, chorusSpeed);
+                fx.process (0.5f * (left[i] + right[i]), left[i], right[i], mode, effectSpeed);
         }
     }
 
@@ -141,8 +141,8 @@ private:
     bool haveParams = false;
     float perfBend = 0.0f, perfDco = 0.0f, perfVcf = 0.0f;
     PolyEffects fx;
-    int chorusType = polyChorus;
-    float chorusSpeed = 0.4f;
-    bool chorusOn = false;
+    int effectType = fxChorus;
+    float effectSpeed = 0.4f;
+    bool effectOn = false;
 };
 } // namespace p800

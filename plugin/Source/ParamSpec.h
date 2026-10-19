@@ -29,7 +29,7 @@ inline constexpr ParamSpec params[] = {
     { 41, "VCF Cutoff", 0, 99, 60 },    { 42, "VCF Resonance", 0, 15, 0 },
     { 43, "VCF Kbd Track", 0, 2, 1 },   { 44, "VCF EG Polarity", 1, 2, 2 },
     { 45, "VCF EG Intensity", 0, 15, 8 }, { 46, "VCF Trigger", 1, 2, 2 },
-    { 48, "Chorus", 0, 1, 1 },
+    { 48, "Effect On/Off", 0, 1, 1 },
     { 51, "DEG1 Attack", 0, 31, 0 },    { 52, "DEG1 Decay", 0, 31, 31 },
     { 53, "DEG1 Break Pt", 0, 31, 31 }, { 54, "DEG1 Slope", 0, 31, 31 },
     { 55, "DEG1 Sustain", 0, 31, 31 },  { 56, "DEG1 Release", 0, 31, 10 },

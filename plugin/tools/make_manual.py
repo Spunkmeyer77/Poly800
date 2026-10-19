@@ -78,11 +78,11 @@ PARAMS = [
     ("VCF (one filter shared by all voices)", [
         ("41", "Cutoff", "0-99", "Filter cutoff frequency."),
         ("42", "Resonance", "0-15", "Emphasis at the cutoff. Very high settings ring and whistle."),
-        ("43", "Keyboard track", "0-2", "0 off, 1 half, 2 full: cutoff follows the highest note played."),
+        ("43", "Keyboard track", "0-2", "0 off, 1 half, 2 full: the cutoff rises with the highest note played (full: one octave per octave, from middle C)."),
         ("44", "EG polarity", "1-2", "1 inverted, 2 normal direction of the DEG 3 sweep."),
         ("45", "EG intensity", "0-15", "How far DEG 3 sweeps the cutoff."),
         ("46", "Trigger", "1-2", "1 single: DEG 3 restarts only when all keys are released. 2 multi: every note restarts it."),
-        ("48", "Chorus", "0-1", "Stereo BBD-style chorus on or off."),
+        ("48", "Effect", "0-1", "Turns the stereo effect on or off (Chorus, Phaser or Ensemble, chosen with TYPE)."),
     ]),
     ("DEG 1 / DEG 2 / DEG 3 (six-stage envelopes)", [
         ("51-56", "DEG 1", "0-31", "Volume envelope of DCO 1: Attack, Decay, Break point, Slope, Sustain, Release."),
@@ -130,7 +130,7 @@ def build():
         s.append(Image(str(panel), width=W, height=W * 800 / 1440))
     s += [Spacer(1, 12 * mm), Paragraph(
         "A reconstruction of a classic 1980s digital-analog hybrid: eight voices of stacked square-wave "
-        "footages, three six-stage envelopes, one shared resonant filter and a stereo chorus.", subtitle), PageBreak()]
+        "footages, three six-stage envelopes, one shared resonant filter, and stereo chorus, phaser and ensemble.", subtitle), PageBreak()]
 
     # 1. Getting started.
     s += [Paragraph("1. Getting started", h1), Paragraph("Installing", h2)]
@@ -163,8 +163,8 @@ def build():
                        "<b>HOLD</b>: notes keep sounding after you let go (the sustain pedal does the same). "
                        "<b>CHORD MEMORY</b> stores the keys you are holding as the chord."],
         ["Programmer", "LED display (program, parameter, value), keypad, PROG/PARA key, <b>DOWN</b> / <b>UP</b>."],
-        ["Performance / Chorus", "<b>VOICES</b> switch (8 voices WHOLE / 4 voices DOUBLE, same as P18), <b>CHORUS</b> on/off (P48), "
-                                "chorus <b>TYPE</b> (Chorus, Ensemble or Original) and the <b>SPEED</b> slider (chorus rate, or ensemble intensity)."],
+        ["Performance / Effects", "<b>VOICES</b> switch (8 voices WHOLE / 4 voices DOUBLE, same as P18), <b>EFFECT</b> on/off (P48), "
+                                  "effect <b>TYPE</b> (Chorus, Phaser or Ensemble) and the <b>SPEED</b> slider (chorus or phaser rate, or ensemble intensity)."],
         ["Parameter chart", "Every sound parameter, laid out like the printed chart on the original. Each cell shows its name, "
                             "number, range and current value."],
     ], [32 * mm, W - 32 * mm]))
@@ -214,10 +214,14 @@ def build():
         "A chord can have up to 8 notes in WHOLE mode; in DOUBLE mode (4 voices) its lowest 4 notes play.",
         "Press <b>POLY</b> to go back to normal playing (POLY also switches HOLD off).",
     ])
-    s += [Paragraph("Chorus", h2), Paragraph(
-        "P48 or the CHORUS switch turns the chorus on and off. <b>TYPE</b> chooses its sound: <b>Chorus</b> (default) and "
-        "<b>Ensemble</b> are the chorus and ensemble from Polytwelve; <b>Original</b> is the reconstruction's fixed BBD "
-        "chorus. The <b>SPEED</b> slider sets the chorus rate (about 0.1 to 4 Hz), or the depth for Ensemble.", body)]
+    s += [Paragraph("Effects", h2), Paragraph(
+        "P-800 has the same three stereo effects as Polytwelve. P48 or the EFFECT switch turns the effect on and off; "
+        "<b>TYPE</b> chooses it:", body)]
+    s += bullets([
+        "<b>Chorus</b> (default): a BBD-style stereo chorus. SPEED sets its rate, about 0.1 to 4 Hz.",
+        "<b>Phaser</b>: a six-stage stereo phaser with feedback. SPEED sets its rate, about 0.05 to 6 Hz.",
+        "<b>Ensemble</b>: a lush three-voice string ensemble. The slider sets its intensity.",
+    ])
     s += [Paragraph("Voices and the shared filter", h2), Paragraph(
         "WHOLE mode gives 8 voices with DCO 1 only; DOUBLE mode gives 4 voices, each with DCO 1 and DCO 2 for fatter, "
         "detuned or interval sounds. All voices go through <b>one shared filter</b>, as on the original, so a new note "
@@ -242,8 +246,8 @@ def build():
         ["Bend Range", "1-12 st", "How far joystick X and the pitch wheel bend."],
         ["Key Assign", "Poly / Chord", "POLY or CHORD (chord memory)."],
         ["Hold", "off / on", "Key assign HOLD (sustain pedal too)."],
-        ["Chorus Type", "Chorus / Ensemble / Original", "Which chorus P48 switches on."],
-        ["Chorus Speed / Intensity", "0-1", "Chorus rate, or Ensemble intensity."],
+        ["Effect Type", "Chorus / Phaser / Ensemble", "Which effect P48 switches on."],
+        ["Effect Speed / Intensity", "0-1", "Chorus or Phaser rate, or Ensemble intensity."],
     ], [45 * mm, 25 * mm, W - 70 * mm]))
 
     # 6. Factory programs.
@@ -268,7 +272,9 @@ def build():
         "Runs internally at 88.2/96 kHz at lower host rates, because the engine's lower-rate filter branch becomes "
         "unstable at full resonance.",
         "Adds joystick bend and modulation, HOLD, the hardware-style panel, and the chord memory and "
-        "chorus/ensemble from Polytwelve (Ticco Ross).",
+        "chorus, phaser and ensemble from Polytwelve (Ticco Ross).",
+        "Keyboard tracking (P43) adds to the cutoff instead of replacing it, so P41 Cutoff works at every tracking "
+        "setting, as on the original instrument.",
         "Not included: the original's sequencer (P86-P88), and cassette or MIDI SysEx program transfer.",
     ])
     s += [Paragraph("Licence", h2), Paragraph(

@@ -20,9 +20,10 @@ AU / VST3 instrument by Ticco Ross, built on the ISLA Poly-800 synthesis core
   memory ported from Polytwelve (`Source/KeyLayer.h`): hold 2+ keys and press
   CHORD (or CHORD MEMORY) to store them; each key then plays the chord
   transposed, last-note priority, up to the voice count (8 WHOLE / 4 DOUBLE).
-- Chorus: P48 on/off; **Chorus Type** picks Polytwelve's Chorus (default) or
-  Ensemble (`Source/PolyEffects.h`, ported unchanged) or the original BBD
-  chorus in the core; **Chorus Speed** sets rate / ensemble intensity.
+- Effects, the same as Polytwelve (`Source/PolyEffects.h`, ported unchanged):
+  P48 on/off; **Effect Type** picks Chorus (default), Phaser or Ensemble;
+  **Effect Speed** sets the chorus/phaser rate or ensemble intensity. The core's
+  own BBD chorus is no longer used.
 - Joystick, as host parameters (automatable; the panel joystick will drive them):
   - **Joystick X** bends pitch by ±**Bend Range** semitones (1–12, default 2),
     smoothed over ~5 ms.
@@ -36,6 +37,11 @@ AU / VST3 instrument by Ticco Ross, built on the ISLA Poly-800 synthesis core
 `poly800_core_set_joystick_mod()`. They only add performance inputs; with the
 joystick centred the core output is unchanged, and the original core tests
 still pass. Joystick MG uses the same ROM fixed-point depth law as P83/P84.
+
+- **Keyboard tracking fix (0.3.0):** the Bristol-derived filter replaced the
+  cutoff with 4 x note frequency x P41 when P43 was on, so P41 hardly did
+  anything on 42 of the 64 factory programs. P43 now scales the normal cutoff by
+  the highest note's distance from middle C (`src/poly800_core_m2.inc`).
 
 ## Wrapper notes (things the core does that the wrapper handles)
 
@@ -80,6 +86,12 @@ parameters.
 juce_core, juce_events and juce_graphics); `docs/panel.png` comes from it.
 
 ## Tests
+
+`tests/filter_test.cpp` checks that P41 sweeps the filter at every P43/P45
+setting and that tracking opens the filter on higher notes.
+
+`tests/effects_test.cpp` checks Chorus, Phaser and Ensemble for level, stereo
+and speed, and that P48 off is dry.
 
 `tests/chord_test.cpp` checks POLY, CHORD memory (capture, transposition,
 last-note priority, voice limit, MEMORY button) and HOLD.
