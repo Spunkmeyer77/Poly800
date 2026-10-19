@@ -3,13 +3,20 @@
 AU / VST3 instrument by Ticco Ross, built on the ISLA Poly-800 synthesis core
 (`../src`). GPL-3.0-or-later, like the core.
 
-## Status: step 2 — playable engine + joystick
+## Status: step 3 — hardware panel
+
+![P-800 panel](docs/panel.png)
 
 - All 47 stock Poly-800 sound parameters (P11–P84) exposed as host parameters,
   named by their original numbers.
 - The 64 MkI factory programs as host programs/presets.
 - Volume and Tune.
-- JUCE's generic editor for now; the hardware panel comes in step 3.
+- Hardware-style panel (resizable, fixed aspect): brushed metal, LED display,
+  keypad (two digits pick a parameter, or a program in PROG mode), UP/DOWN,
+  joystick (springs back), volume fader, tune slider, VOICES and CHORUS
+  switches, and the full parameter chart (click to select, drag or scroll to
+  change). Everything is a host parameter, so automation and presets follow.
+- Key assign: POLY, or HOLD (latches notes until POLY is pressed).
 - Joystick, as host parameters (automatable; the panel joystick will drive them):
   - **Joystick X** bends pitch by ±**Bend Range** semitones (1–12, default 2),
     smoothed over ~5 ms.
@@ -54,6 +61,11 @@ Plugins land in `plugin/build/P800_artefacts/Release/`.
 GitHub Actions (`.github/workflows/poly800-macos.yml`) builds a universal
 binary, runs the factory test and uploads an unsigned `.pkg` (plus any PDF in
 `plugin/docs/`).
+
+## Panel preview
+
+`tools/render_panel.cpp` draws the panel to a PNG without a host (it only needs
+juce_core, juce_events and juce_graphics); `docs/panel.png` comes from it.
 
 ## Tests
 

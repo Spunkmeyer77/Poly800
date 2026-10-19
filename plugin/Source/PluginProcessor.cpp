@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "PluginProcessor.h"
+#include "PluginEditor.h"
 #include "FactoryPrograms.h"
 
 static juce::String paramId (int number) { return "p" + juce::String (number); }
@@ -19,6 +20,7 @@ P800Processor::P800Processor()
     joyXParam = apvts.getRawParameterValue ("joyX");
     joyYParam = apvts.getRawParameterValue ("joyY");
     bendRangeParam = apvts.getRawParameterValue ("bendRange");
+    holdParam = apvts.getRawParameterValue ("hold");
     setCurrentProgram (0);
 }
 
@@ -45,6 +47,10 @@ juce::AudioProcessorValueTreeState::ParameterLayout P800Processor::createLayout(
     layout.add (std::make_unique<juce::AudioParameterInt> (
         juce::ParameterID { "bendRange", 1 }, "Bend Range", 1, 12, 2,
         juce::AudioParameterIntAttributes().withLabel ("st")));
+
+    // Key assign: HOLD latches notes until it is switched back to POLY.
+    layout.add (std::make_unique<juce::AudioParameterBool> (
+        juce::ParameterID { "hold", 1 }, "Hold", false));
     return layout;
 }
 
@@ -104,6 +110,16 @@ void P800Processor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBu
     engine.setParams (currentCoreParams());
     updatePerformance();
 
+    const bool holdOn = holdParam->load() > 0.5f;
+    if (holdWasOn && ! holdOn)
+        for (int n = 0; n < 128; ++n)
+            if (latched[(size_t) n])
+            {
+                engine.noteOff (n);
+                latched[(size_t) n] = false;
+            }
+    holdWasOn = holdOn;
+
     float* left = buffer.getWritePointer (0);
     float* right = nullptr;
     if (buffer.getNumChannels() > 1)
@@ -128,11 +144,22 @@ void P800Processor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBu
         renderTo (juce::jlimit (pos, numSamples, meta.samplePosition));
         const auto msg = meta.getMessage();
         if (msg.isNoteOn())
+        {
+            latched[(size_t) msg.getNoteNumber()] = false;
             engine.noteOn (msg.getNoteNumber(), msg.getVelocity());
+        }
         else if (msg.isNoteOff())
-            engine.noteOff (msg.getNoteNumber());
+        {
+            if (holdOn)
+                latched[(size_t) msg.getNoteNumber()] = true;
+            else
+                engine.noteOff (msg.getNoteNumber());
+        }
         else if (msg.isAllNotesOff() || msg.isAllSoundOff())
+        {
+            latched.fill (false);
             engine.allNotesOff();
+        }
         else if (msg.isPitchWheel())
         {
             midiBend = (float) (msg.getPitchWheelValue() - 8192) / 8192.0f;
@@ -169,6 +196,12 @@ void P800Processor::setCurrentProgram (int index)
             param->setValueNotifyingHost (param->convertTo0to1 ((float) prog.values[i]));
 }
 
+void P800Processor::selectProgram (int index)
+{
+    setCurrentProgram (index);
+    updateHostDisplay (ChangeDetails().withProgramChanged (true));
+}
+
 const juce::String P800Processor::getProgramName (int index)
 {
     if (index < 0 || index >= factory::numPrograms)
@@ -198,7 +231,7 @@ void P800Processor::setStateInformation (const void* data, int size)
 
 juce::AudioProcessorEditor* P800Processor::createEditor()
 {
-    return new juce::GenericAudioProcessorEditor (*this);
+    return new P800Editor (*this);
 }
 
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter()

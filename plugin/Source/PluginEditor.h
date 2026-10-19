@@ -1,0 +1,43 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+#pragma once
+
+#include "PluginProcessor.h"
+#include "PanelView.h"
+
+class P800Editor : public juce::AudioProcessorEditor, private juce::Timer
+{
+public:
+    explicit P800Editor (P800Processor&);
+    ~P800Editor() override;
+
+    void paint (juce::Graphics&) override;
+    void mouseDown (const juce::MouseEvent&) override;
+    void mouseDrag (const juce::MouseEvent&) override;
+    void mouseUp (const juce::MouseEvent&) override;
+    void mouseWheelMove (const juce::MouseEvent&, const juce::MouseWheelDetails&) override;
+
+private:
+    void timerCallback() override;
+    void refreshState();
+    float scale() const { return (float) getWidth() / (float) p800::PanelView::width; }
+    juce::Point<float> toDesign (juce::Point<float> p) const { return p / scale(); }
+
+    juce::RangedAudioParameter* param (const juce::String& id) const;
+    juce::RangedAudioParameter* chartParam (int index) const;
+    float getReal (const juce::String& id) const;
+    void setReal (const juce::String& id, float value, bool gesture = true);
+    void stepSelected (int delta);
+    void typeDigit (int digit);
+    void setFromDrag (p800::HitKind, juce::Point<float> design);
+
+    P800Processor& processor;
+    p800::PanelView view;
+    p800::PanelState state;
+
+    p800::Hit dragHit;
+    int dragStartValue = 0;
+    float dragStartY = 0.0f;
+    float dragAccum = 0.0f;
+
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (P800Editor)
+};

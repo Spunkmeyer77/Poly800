@@ -44,6 +44,8 @@ set(CORE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../src)
 
 target_sources(P800 PRIVATE
     Source/PluginProcessor.cpp
+    Source/PluginEditor.cpp
+    Source/PanelView.cpp
     ${CORE_DIR}/poly800_core_m6.c)
 
 target_include_directories(P800 PRIVATE ${CORE_DIR} Source)

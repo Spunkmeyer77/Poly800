@@ -35,6 +35,9 @@ public:
     void getStateInformation (juce::MemoryBlock&) override;
     void setStateInformation (const void*, int) override;
 
+    // Message thread: switch program and tell the host.
+    void selectProgram (int index);
+
     juce::AudioProcessorValueTreeState apvts;
 
 private:
@@ -49,6 +52,9 @@ private:
     std::atomic<float>* joyXParam = nullptr;
     std::atomic<float>* joyYParam = nullptr;
     std::atomic<float>* bendRangeParam = nullptr;
+    std::atomic<float>* holdParam = nullptr;
+    bool holdWasOn = false;
+    std::array<bool, 128> latched {}; // notes released while HOLD is on
     float midiBend = 0.0f;    // pitch wheel, -1..1
     float midiModWheel = 0.0f; // CC1, 0..1
     int currentProgram = 0;
