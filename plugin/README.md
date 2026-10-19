@@ -3,15 +3,26 @@
 AU / VST3 instrument by Ticco Ross, built on the ISLA Poly-800 synthesis core
 (`../src`). GPL-3.0-or-later, like the core.
 
-## Status: step 1 — playable engine
+## Status: step 2 — playable engine + joystick
 
 - All 47 stock Poly-800 sound parameters (P11–P84) exposed as host parameters,
   named by their original numbers.
 - The 64 MkI factory programs as host programs/presets.
 - Volume and Tune.
 - JUCE's generic editor for now; the hardware panel comes in step 3.
-- Joystick (bend / DCO mod / VCF mod) not wired yet — the core has no inputs
-  for them; step 2 adds them.
+- Joystick, as host parameters (automatable; the panel joystick will drive them):
+  - **Joystick X** bends pitch by ±**Bend Range** semitones (1–12, default 2),
+    smoothed over ~5 ms.
+  - **Joystick Y up** adds the MG triangle to the DCOs (vibrato), **Y down**
+    adds it to the VCF, on top of the program's P83/P84, up to full depth.
+- MIDI pitch wheel adds to Joystick X; mod wheel (CC1) acts like joystick up.
+
+## Core additions
+
+`src/poly800_core.h` gains `poly800_core_set_pitch_bend()` and
+`poly800_core_set_joystick_mod()`. They only add performance inputs; with the
+joystick centred the core output is unchanged, and the original core tests
+still pass. Joystick MG uses the same ROM fixed-point depth law as P83/P84.
 
 ## Wrapper notes (things the core does that the wrapper handles)
 
@@ -44,7 +55,11 @@ GitHub Actions (`.github/workflows/poly800-macos.yml`) builds a universal
 binary, runs the factory test and uploads an unsigned `.pkg` (plus any PDF in
 `plugin/docs/`).
 
-## Test
+## Tests
+
+`tests/joystick_test.cpp` checks that bend moves pitch by exactly the requested
+interval and that joystick up/down modulate pitch/filter (and centred does
+nothing), at 48 and 96 kHz.
 
 `tests/factory_render_test.cpp` renders a chord through all 64 factory
 programs at 44.1, 48 and 96 kHz through the same `Engine` and parameter

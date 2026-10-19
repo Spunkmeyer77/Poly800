@@ -134,6 +134,16 @@ struct Poly800Core {
     double lfo_delay_remaining;
     float lfo_gain;
 
+    /*
+     * Performance inputs (joystick), added for the P-800 plugin. They are
+     * not part of a stored sound program. Zeroed by calloc in create.
+     */
+    float bend_target_semitones;
+    float bend_semitones;
+    float joy_dco;      /* 0..1, joystick up: extra MG -> DCO */
+    float joy_vcf;      /* 0..1, joystick down: extra MG -> VCF */
+    float mg_raw_norm;  /* MG triangle at full (15) depth, -1..1 domain */
+
     uint32_t noise_state;
     Chorus chorus;
 };

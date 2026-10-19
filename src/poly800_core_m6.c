@@ -209,6 +209,8 @@ static void m6_mg_control_tick(Poly800Core* core)
         m6_depth_norm(core->params.mg_dco, magnitude, sign_bit != 0);
     st[MG_STATE_VCF_NORM] =
         m6_depth_norm(core->params.mg_vcf, magnitude, sign_bit != 0);
+    /* Full-depth MG for the joystick, through the same fixed-point law. */
+    core->mg_raw_norm = m6_depth_norm(15.0f, magnitude, sign_bit != 0);
 }
 
 /*
@@ -477,13 +479,25 @@ void poly800_core_render(
     const int double_mode = core->params.dco_mode == 2;
     int highest = highest_sounding_note(core);
 
+    /* One-pole smoothing of the joystick bend, ~5 ms time constant. */
+    const float bend_coef =
+        1.0f - expf(-1.0f / (0.005f * (float)core->sample_rate));
+
     for (uint32_t frame = 0; frame < nframes; ++frame) {
         float mg_dco_norm;
         float mg_vcf_norm;
         m6_mg_audio_tick(core, &mg_dco_norm, &mg_vcf_norm);
 
+        /* Joystick up/down adds full-depth MG on top of P83/P84. */
+        mg_dco_norm += core->joy_dco * core->mg_raw_norm;
+        mg_vcf_norm += core->joy_vcf * core->mg_raw_norm;
+
+        core->bend_semitones +=
+            (core->bend_target_semitones - core->bend_semitones) * bend_coef;
+
         /* Stock DCO MG calibration: bipolar, +/-160 cents full scale. */
-        const float mg_cents = mg_dco_norm * P800_M6_DCO_MG_MAX_CENTS;
+        const float mg_cents = mg_dco_norm * P800_M6_DCO_MG_MAX_CENTS
+                             + core->bend_semitones * 100.0f;
         float pitch_ratio = exp2f(mg_cents / 1200.0f);
         if (!isfinite(pitch_ratio) || pitch_ratio < 0.001f)
             pitch_ratio = 0.001f;
@@ -557,4 +571,20 @@ void poly800_core_render(
     /* Keep otherwise-unused recovered table visible to optimisers/tests. */
     (void)p800_m6_log_table[0];
     (void)m6_state_const(core);
+}
+
+void poly800_core_set_pitch_bend(Poly800Core* core, float semitones)
+{
+    if (!core || !isfinite(semitones))
+        return;
+    core->bend_target_semitones = clampf(semitones, -24.0f, 24.0f);
+}
+
+void poly800_core_set_joystick_mod(
+    Poly800Core* core, float dco_amount, float vcf_amount)
+{
+    if (!core)
+        return;
+    core->joy_dco = isfinite(dco_amount) ? clampf(dco_amount, 0.0f, 1.0f) : 0.0f;
+    core->joy_vcf = isfinite(vcf_amount) ? clampf(vcf_amount, 0.0f, 1.0f) : 0.0f;
 }

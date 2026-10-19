@@ -16,6 +16,9 @@ P800Processor::P800Processor()
     }
     masterParam = apvts.getRawParameterValue ("master");
     tuneParam = apvts.getRawParameterValue ("tune");
+    joyXParam = apvts.getRawParameterValue ("joyX");
+    joyYParam = apvts.getRawParameterValue ("joyY");
+    bendRangeParam = apvts.getRawParameterValue ("bendRange");
     setCurrentProgram (0);
 }
 
@@ -33,6 +36,15 @@ juce::AudioProcessorValueTreeState::ParameterLayout P800Processor::createLayout(
         juce::ParameterID { "tune", 1 }, "Tune",
         juce::NormalisableRange<float> (-100.0f, 100.0f, 0.1f), 0.0f,
         juce::AudioParameterFloatAttributes().withLabel ("cents")));
+
+    // Joystick: X bends pitch; Y up adds MG to the DCOs, Y down adds MG to the VCF.
+    layout.add (std::make_unique<juce::AudioParameterFloat> (
+        juce::ParameterID { "joyX", 1 }, "Joystick X (Bend)", -1.0f, 1.0f, 0.0f));
+    layout.add (std::make_unique<juce::AudioParameterFloat> (
+        juce::ParameterID { "joyY", 1 }, "Joystick Y (DCO+ / VCF-)", -1.0f, 1.0f, 0.0f));
+    layout.add (std::make_unique<juce::AudioParameterInt> (
+        juce::ParameterID { "bendRange", 1 }, "Bend Range", 1, 12, 2,
+        juce::AudioParameterIntAttributes().withLabel ("st")));
     return layout;
 }
 
@@ -52,6 +64,17 @@ bool P800Processor::isBusesLayoutSupported (const BusesLayout& layouts) const
 {
     const auto& out = layouts.getMainOutputChannelSet();
     return out == juce::AudioChannelSet::stereo() || out == juce::AudioChannelSet::mono();
+}
+
+void P800Processor::updatePerformance()
+{
+    const float range = bendRangeParam->load();
+    const float x = juce::jlimit (-1.0f, 1.0f, joyXParam->load() + midiBend);
+    const float y = joyYParam->load();
+    // Mod wheel works like pushing the joystick up.
+    const float dco = juce::jlimit (0.0f, 1.0f, juce::jmax (0.0f, y) + midiModWheel);
+    const float vcf = juce::jmax (0.0f, -y);
+    engine.setPerformance (x * range, dco, vcf);
 }
 
 Poly800Params P800Processor::currentCoreParams() const
@@ -79,6 +102,7 @@ void P800Processor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBu
     }
 
     engine.setParams (currentCoreParams());
+    updatePerformance();
 
     float* left = buffer.getWritePointer (0);
     float* right = nullptr;
@@ -109,6 +133,16 @@ void P800Processor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBu
             engine.noteOff (msg.getNoteNumber());
         else if (msg.isAllNotesOff() || msg.isAllSoundOff())
             engine.allNotesOff();
+        else if (msg.isPitchWheel())
+        {
+            midiBend = (float) (msg.getPitchWheelValue() - 8192) / 8192.0f;
+            updatePerformance();
+        }
+        else if (msg.isController() && msg.getControllerNumber() == 1)
+        {
+            midiModWheel = (float) msg.getControllerValue() / 127.0f;
+            updatePerformance();
+        }
     }
     renderTo (numSamples);
 

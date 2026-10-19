@@ -40,11 +40,17 @@ public:
 private:
     static juce::AudioProcessorValueTreeState::ParameterLayout createLayout();
     Poly800Params currentCoreParams() const;
+    void updatePerformance();
 
     p800::Engine engine;
     std::array<std::atomic<float>*, p800::numParams> paramValues {};
     std::atomic<float>* masterParam = nullptr;
     std::atomic<float>* tuneParam = nullptr;
+    std::atomic<float>* joyXParam = nullptr;
+    std::atomic<float>* joyYParam = nullptr;
+    std::atomic<float>* bendRangeParam = nullptr;
+    float midiBend = 0.0f;    // pitch wheel, -1..1
+    float midiModWheel = 0.0f; // CC1, 0..1
     int currentProgram = 0;
     std::vector<float> scratch;
 

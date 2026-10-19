@@ -80,6 +80,16 @@ void poly800_core_note_off(Poly800Core* core, uint8_t note);
 void poly800_core_all_notes_off(Poly800Core* core);
 void poly800_core_render(Poly800Core* core, float* left, float* right, uint32_t nframes);
 
+/*
+ * Joystick / performance inputs (P-800 plugin additions).
+ * Pitch bend in semitones, smoothed internally (~5 ms) to avoid zipper noise.
+ * Joystick modulation amounts are 0..1: up adds the MG triangle to the DCOs,
+ * down adds it to the VCF, on top of the program's P83/P84 depths, at up to
+ * the full (depth 15) MG range.
+ */
+void poly800_core_set_pitch_bend(Poly800Core* core, float semitones);
+void poly800_core_set_joystick_mod(Poly800Core* core, float dco_amount, float vcf_amount);
+
 #ifdef __cplusplus
 }
 #endif

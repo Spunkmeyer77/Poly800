@@ -22,6 +22,7 @@ public:
         destroy();
         factor = hostRate < 88000.0 ? 2 : 1;
         core = poly800_core_create (hostRate * factor);
+        setPerformance (perfBend, perfDco, perfVcf);
         maxFrames = std::max (1, maxBlock);
         workL.assign ((size_t) (maxFrames * factor), 0.0f);
         workR.assign ((size_t) (maxFrames * factor), 0.0f);
@@ -48,6 +49,17 @@ public:
     void noteOn (int note, int velocity) { if (core) poly800_core_note_on (core, (uint8_t) note, (uint8_t) velocity); }
     void noteOff (int note)              { if (core) poly800_core_note_off (core, (uint8_t) note); }
     void allNotesOff()                   { if (core) poly800_core_all_notes_off (core); }
+
+    // Joystick: bend in semitones, DCO/VCF mod amounts 0..1 (stay set across prepare()).
+    void setPerformance (float bendSemitones, float dcoMod, float vcfMod)
+    {
+        perfBend = bendSemitones; perfDco = dcoMod; perfVcf = vcfMod;
+        if (core)
+        {
+            poly800_core_set_pitch_bend (core, perfBend);
+            poly800_core_set_joystick_mod (core, perfDco, perfVcf);
+        }
+    }
 
     // Overwrites left/right with numFrames of output. Splits long blocks.
     void render (float* left, float* right, int numFrames)
@@ -103,5 +115,6 @@ private:
     Decimator2x decL, decR;
     Poly800Params last {};
     bool haveParams = false;
+    float perfBend = 0.0f, perfDco = 0.0f, perfVcf = 0.0f;
 };
 } // namespace p800
