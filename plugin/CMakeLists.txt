@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-# TRoss 800 - AU/VST3 wrapper around the ISLA Poly-800 core.
+# Poly800 - AU/VST3 wrapper around the ISLA Poly-800 core.
 cmake_minimum_required(VERSION 3.22)
-project(TRoss800 VERSION 0.1.0 LANGUAGES C CXX)
+project(Poly800 VERSION 0.1.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_OSX_DEPLOYMENT_TARGET "11.0" CACHE STRING "")
@@ -24,10 +24,10 @@ if(APPLE)
     list(APPEND P800_FORMATS AU)
 endif()
 
-juce_add_plugin(TRoss800
+juce_add_plugin(Poly800
     COMPANY_NAME "Ticco Ross"
-    PRODUCT_NAME "TRoss 800"
-    BUNDLE_ID com.ticcoross.tross800
+    PRODUCT_NAME "Poly800"
+    BUNDLE_ID com.ticcoross.poly800
     PLUGIN_MANUFACTURER_CODE Tcro
     PLUGIN_CODE Tp80
     IS_SYNTH TRUE
@@ -42,19 +42,19 @@ juce_add_plugin(TRoss800
 
 set(CORE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../src)
 
-target_sources(TRoss800 PRIVATE
+target_sources(Poly800 PRIVATE
     Source/PluginProcessor.cpp
     ${CORE_DIR}/poly800_core_m6.c)
 
-target_include_directories(TRoss800 PRIVATE ${CORE_DIR} Source)
+target_include_directories(Poly800 PRIVATE ${CORE_DIR} Source)
 
-target_compile_definitions(TRoss800 PUBLIC
+target_compile_definitions(Poly800 PUBLIC
     JUCE_WEB_BROWSER=0
     JUCE_USE_CURL=0
     JUCE_VST3_CAN_REPLACE_VST2=0
     JUCE_DISPLAY_SPLASH_SCREEN=0)
 
-target_link_libraries(TRoss800
+target_link_libraries(Poly800
     PRIVATE juce::juce_audio_processors
     PUBLIC juce::juce_recommended_config_flags juce::juce_recommended_lto_flags juce::juce_recommended_warning_flags)
 

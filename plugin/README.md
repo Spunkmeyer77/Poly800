@@ -1,4 +1,4 @@
-# TRoss 800
+# Poly800
 
 AU / VST3 instrument by Ticco Ross, built on the ISLA Poly-800 synthesis core
 (`../src`). GPL-3.0-or-later, like the core.
@@ -38,9 +38,9 @@ ctest --test-dir plugin/build -C Release --output-on-failure
 ```
 
 JUCE 8.0.4 is fetched automatically, or pass `-DJUCE_DIR=/path/to/JUCE`.
-Plugins land in `plugin/build/TRoss800_artefacts/Release/`.
+Plugins land in `plugin/build/Poly800_artefacts/Release/`.
 
-GitHub Actions (`.github/workflows/tross800-macos.yml`) builds a universal
+GitHub Actions (`.github/workflows/poly800-macos.yml`) builds a universal
 binary, runs the factory test and uploads an unsigned `.pkg` (plus any PDF in
 `plugin/docs/`).
 

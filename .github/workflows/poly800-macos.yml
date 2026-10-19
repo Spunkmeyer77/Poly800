@@ -1,9 +1,9 @@
-# Builds the TRoss 800 AU + VST3 (universal binary) on macOS and packages a .pkg.
-name: TRoss 800 macOS build
+# Builds the Poly800 AU + VST3 (universal binary) on macOS and packages a .pkg.
+name: Poly800 macOS build
 
 on:
   push:
-    paths: [ "plugin/**", "src/**", "factory/**", ".github/workflows/tross800-macos.yml" ]
+    paths: [ "plugin/**", "src/**", "factory/**", ".github/workflows/poly800-macos.yml" ]
   workflow_dispatch:
 
 jobs:
@@ -29,19 +29,19 @@ jobs:
       - name: Package .pkg
         run: |
           set -e
-          ART=plugin/build/TRoss800_artefacts/Release
+          ART=plugin/build/Poly800_artefacts/Release
           VERSION=$(grep -m1 -oE 'VERSION [0-9.]+' plugin/CMakeLists.txt | cut -d' ' -f2)
           mkdir -p pkgroot/au/Library/Audio/Plug-Ins/Components pkgroot/vst3/Library/Audio/Plug-Ins/VST3 dist
-          cp -R "$ART/AU/TRoss 800.component" pkgroot/au/Library/Audio/Plug-Ins/Components/
-          cp -R "$ART/VST3/TRoss 800.vst3" pkgroot/vst3/Library/Audio/Plug-Ins/VST3/
-          pkgbuild --root pkgroot/au --identifier com.ticcoross.tross800.au --version "$VERSION" --install-location / au.pkg
-          pkgbuild --root pkgroot/vst3 --identifier com.ticcoross.tross800.vst3 --version "$VERSION" --install-location / vst3.pkg
-          productbuild --package au.pkg --package vst3.pkg "dist/TRoss 800 $VERSION.pkg"
+          cp -R "$ART/AU/Poly800.component" pkgroot/au/Library/Audio/Plug-Ins/Components/
+          cp -R "$ART/VST3/Poly800.vst3" pkgroot/vst3/Library/Audio/Plug-Ins/VST3/
+          pkgbuild --root pkgroot/au --identifier com.ticcoross.poly800.au --version "$VERSION" --install-location / au.pkg
+          pkgbuild --root pkgroot/vst3 --identifier com.ticcoross.poly800.vst3 --version "$VERSION" --install-location / vst3.pkg
+          productbuild --package au.pkg --package vst3.pkg "dist/Poly800 $VERSION.pkg"
           # Ship the PDF manual alongside the installer when one exists.
           if ls plugin/docs/*.pdf >/dev/null 2>&1; then cp plugin/docs/*.pdf dist/; fi
 
       - name: Upload
         uses: actions/upload-artifact@v4
         with:
-          name: TRoss800-macOS
+          name: Poly800-macOS
           path: dist/*
