@@ -42,6 +42,20 @@ private:
     void openPresetFile();
     std::unique_ptr<juce::FileChooser> chooser;
 
+    // Sequencer screen
+    bool seqMouseDown (const p800::Hit&, const juce::MouseEvent&, juce::Point<float> design);
+    void seqMouseDrag (juce::Point<float> design);
+    void seqMouseUp();
+    void seqWheel (const p800::Hit&, int delta);
+    void setLaneValue (int step, float y, bool reset);
+    void showRateMenu();
+    void showLockParamMenu();
+    void askClearPattern();
+    p800::SeqPattern clipboard;
+    int lastSeqVersion = -1;
+    int seqDragStart = -1, seqDragIndex = -1, seqDragValue = 0;
+    bool seqDragNew = false, seqDragMoved = false;
+
     P800Processor& processor;
     p800::PanelView view;
     p800::PanelState state;

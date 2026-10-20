@@ -1,0 +1,202 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Sequencer test: editing rules (8-note limit), timing on the internal clock
+// and in host sync (including loop jumps), swing, gate, polyphonic chords,
+// 32-step wrap, probability, parameter locks and the save format.
+#include "Sequencer.h"
+#include <cstdio>
+#include <vector>
+
+using namespace p800;
+
+namespace
+{
+int fails = 0;
+void check (bool ok, const char* what)
+{
+    std::printf ("%s %s\n", ok ? "ok  " : "FAIL", what);
+    fails += ok ? 0 : 1;
+}
+
+struct Rec { long long sample; SeqEvent e; };
+
+// Runs the player for 'samples' in blocks, collecting events with absolute sample times.
+std::vector<Rec> run (SeqPlayer& pl, long long samples, int block, SeqTransport t, bool hostAdvance, double sr = 48000.0)
+{
+    std::vector<Rec> out;
+    SeqEvent ev[SeqPlayer::maxEvents];
+    for (long long s = 0; s < samples; s += block)
+    {
+        const int n = (int) std::min<long long> (block, samples - s);
+        const int c = pl.process (n, t, true, ev);
+        for (int i = 0; i < c; ++i) out.push_back ({ s + ev[i].offset, ev[i] });
+        if (hostAdvance) t.ppq += n * t.bpm / 60.0 / sr;
+    }
+    return out;
+}
+
+int count (const std::vector<Rec>& r, SeqEvent::Type type)
+{
+    int n = 0;
+    for (auto& x : r) n += x.e.type == type ? 1 : 0;
+    return n;
+}
+} // namespace
+
+int main()
+{
+    const double sr = 48000.0;
+
+    { // editing
+        SeqData d;
+        bool all = true;
+        for (int i = 0; i < 8; ++i) all = all && d.addNote (0, 60 + i);
+        check (all && d.pat().steps[0].noteCount() == 8, "a step takes 8 notes");
+        check (! d.addNote (0, 80), "a 9th note is refused (8 voices)");
+        check (! d.addNote (0, 60), "the same pitch twice on a step is refused");
+        d.addNote (4, 50, 3);
+        int start = -1;
+        check (d.findNote (6, 50, start) >= 0 && start == 4, "a 3-step note is found from a later step it covers");
+        check (d.findNote (7, 50, start) < 0, "but not after it ends");
+        d.setLock (2, 18, 150);
+        check (d.pat().steps[2].locks[18] == 99, "locks are clamped to the parameter range (P41 0..99)");
+        d.setLock (2, 19, 7);
+        check (d.pat().steps[2].locks[18] == 99 && d.pat().steps[2].locks[19] == 7, "several locks on one step");
+    }
+
+    { // internal clock: 120 BPM 1/16 = 6000 samples per step
+        SeqPlayer pl; pl.prepare (sr);
+        SeqData d; d.settings.hostSync = false; d.settings.bpm = 120; d.settings.gate = 50;
+        d.addNote (0, 60); d.addNote (4, 62);
+        pl.setData (d);
+        const auto r = run (pl, 6000 * 16 - 100, 256, {}, false);
+        std::vector<long long> ons;
+        for (auto& x : r) if (x.e.type == SeqEvent::noteOn) ons.push_back (x.sample);
+        check (ons.size() == 2 && ons[0] == 0 && std::llabs (ons[1] - 24000) <= 1, "notes start on time (step 1 at 0, step 5 at 24000)");
+        long long off0 = -1;
+        for (auto& x : r) if (x.e.type == SeqEvent::noteOff && x.e.note == 60) { off0 = x.sample; break; }
+        check (std::llabs (off0 - 3000) <= 1, "gate 50% ends the note half a step later");
+        check (count (r, SeqEvent::step) == 16, "16 step events in one bar");
+    }
+
+    { // chord: 4 notes on one step all at the same sample; second bar repeats
+        SeqPlayer pl; pl.prepare (sr);
+        SeqData d; d.settings.hostSync = false;
+        for (int n : { 48, 51, 55, 58 }) d.addNote (0, n, 2);
+        pl.setData (d);
+        const auto r = run (pl, 6000 * 32 - 100, 512, {}, false);
+        int at0 = 0, at16 = 0;
+        for (auto& x : r) if (x.e.type == SeqEvent::noteOn) { at0 += x.sample == 0; at16 += std::llabs (x.sample - 96000) <= 1; }
+        check (at0 == 4 && at16 == 4, "polyphonic chord plays together, and again next bar");
+        check (count (r, SeqEvent::noteOn) == count (r, SeqEvent::noteOff), "every note is released");
+    }
+
+    { // swing: odd steps late by (swing - 50) * 2 % of a step
+        SeqPlayer pl; pl.prepare (sr);
+        SeqData d; d.settings.hostSync = false; d.settings.swing = 75;
+        d.addNote (0, 60); d.addNote (1, 61);
+        pl.setData (d);
+        const auto r = run (pl, 12000, 128, {}, false);
+        long long t1 = -1;
+        for (auto& x : r) if (x.e.type == SeqEvent::noteOn && x.e.note == 61) t1 = x.sample;
+        check (std::llabs (t1 - 9000) <= 1, "swing 75% moves step 2 from 6000 to 9000");
+    }
+
+    { // 32 steps wrap at 32, not 16
+        SeqPlayer pl; pl.prepare (sr);
+        SeqData d; d.settings.hostSync = false; d.pat().length = 32;
+        d.addNote (20, 60);
+        pl.setData (d);
+        const auto r = run (pl, 6000 * 64, 256, {}, false);
+        std::vector<long long> ons;
+        for (auto& x : r) if (x.e.type == SeqEvent::noteOn) ons.push_back (x.sample);
+        check (ons.size() == 2 && std::llabs (ons[0] - 120000) <= 1 && std::llabs (ons[1] - 312000) <= 1, "32-step pattern: step 21 plays once per 32 steps");
+    }
+
+    { // host sync: follows the host position and handles a loop jump
+        SeqPlayer pl; pl.prepare (sr);
+        SeqData d; d.settings.hostSync = true; d.addNote (0, 60, 16); // long note
+        pl.setData (d);
+        SeqTransport t; t.hasHost = true; t.hostPlaying = true; t.bpm = 120; t.ppq = 0.0;
+        auto r = run (pl, 6000 * 4, 512, t, true);
+        check (count (r, SeqEvent::noteOn) == 1 && r.front().sample == 0, "host sync: plays from the host's beat 0");
+        SeqEvent ev[SeqPlayer::maxEvents];
+        t.ppq = 0.0; // host loops back
+        const int c = pl.process (512, t, true, ev);
+        bool released = false, retriggered = false;
+        for (int i = 0; i < c; ++i) { released |= ev[i].type == SeqEvent::noteOff; retriggered |= ev[i].type == SeqEvent::noteOn; }
+        check (released && retriggered, "host loop: hanging notes are released and the step replays");
+        t.hostPlaying = false;
+        const int c2 = pl.process (512, t, true, ev);
+        bool off = false;
+        for (int i = 0; i < c2; ++i) off |= ev[i].type == SeqEvent::noteOff;
+        check (off && pl.currentStep() == -1, "host stop releases notes");
+
+        SeqPlayer pl2; pl2.prepare (sr); pl2.setData (d);
+        SeqTransport mid = t; mid.hostPlaying = true; mid.ppq = 0.6; // 2.4 steps in
+        const auto r2 = run (pl2, 6000 * 2, 256, mid, true);
+        check (count (r2, SeqEvent::noteOn) == 0 && r2.front().e.stepIndex == 3, "starting mid-bar waits for the next step");
+    }
+
+    { // probability 0 never plays, 100 always
+        SeqPlayer pl; pl.prepare (sr);
+        SeqData d; d.settings.hostSync = false;
+        d.addNote (0, 60); d.pat().steps[0].probability = 0;
+        d.addNote (8, 62);
+        pl.setData (d);
+        const auto r = run (pl, 6000 * 16 * 8, 512, {}, false);
+        int n60 = 0, n62 = 0;
+        for (auto& x : r) if (x.e.type == SeqEvent::noteOn) { n60 += x.e.note == 60; n62 += x.e.note == 62; }
+        check (n60 == 0 && n62 == 8, "probability 0% skips, 100% always plays");
+        SeqData h; h.settings.hostSync = false; h.addNote (0, 60); h.pat().steps[0].probability = 50;
+        SeqPlayer p2; p2.prepare (sr); p2.setData (h);
+        const auto r2 = run (p2, 6000LL * 16 * 200, 1024, {}, false);
+        const int n = count (r2, SeqEvent::noteOn);
+        check (n > 70 && n < 130, "probability 50% plays about half the time");
+    }
+
+    { // parameter locks follow the playing step
+        SeqPlayer pl; pl.prepare (sr);
+        SeqData d; d.settings.hostSync = false;
+        d.setLock (1, 18, 80); d.setLock (1, 19, 12);
+        pl.setData (d);
+        SeqEvent ev[SeqPlayer::maxEvents];
+        pl.process (6000, {}, true, ev);
+        check (pl.activeLocks() == nullptr, "step 1 has no locks");
+        pl.process (6000, {}, true, ev);
+        const auto* l = pl.activeLocks();
+        check (l != nullptr && l[18] == 80 && l[19] == 12 && l[20] == -1, "step 2 applies its two locks, others untouched");
+        pl.process (6000, {}, true, ev);
+        check (pl.activeLocks() == nullptr, "locks end with the step");
+        pl.process (512, {}, false, ev);
+        check (pl.activeLocks() == nullptr && pl.currentStep() == -1, "stopped: no locks, no playhead");
+    }
+
+    { // save format round trip
+        SeqData d;
+        d.settings = { 3, 62, 40, false, 98 };
+        d.current = 2;
+        d.pat().length = 32;
+        for (int n : { 48, 51, 55 }) d.addNote (0, n, 2, 90);
+        d.addNote (31, 72, 1, 127);
+        d.pat().steps[5].probability = 25;
+        d.pat().steps[5].gate = 60;
+        d.setLock (5, 18, 33); d.setLock (5, 46, 9);
+        d.current = 7; d.addNote (3, 40); d.current = 2;
+        const auto text = d.serialise();
+        SeqData e;
+        check (e.deserialise (text), "parses its own output");
+        check (e.serialise() == text, "round trip is exact");
+        check (e.current == 2 && e.settings.rate == 3 && e.settings.swing == 62 && ! e.settings.hostSync && e.settings.bpm == 98,
+               "settings survive");
+        check (e.pat().length == 32 && e.pat().steps[0].noteCount() == 3 && e.pat().steps[0].notes[0].length == 2
+               && e.pat().steps[31].notes[0].velocity == 127, "notes survive");
+        check (e.pat().steps[5].probability == 25 && e.pat().steps[5].gate == 60 && e.pat().steps[5].locks[18] == 33
+               && e.pat().steps[5].locks[46] == 9, "probability, gate and locks survive");
+        check (e.patterns[7].steps[3].notes[0].note == 40, "every pattern is saved");
+        SeqData f;
+        check (! f.deserialise ("garbage") && ! f.deserialise (""), "rejects text that is not a sequence");
+    }
+
+    std::printf (fails ? "\n%d failure(s)\n" : "\nall sequencer checks pass\n", fails);
+    return fails ? 1 : 0;
+}

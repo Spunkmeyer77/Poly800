@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # P-800 - AU/VST3 wrapper around the ISLA Poly-800 core.
 cmake_minimum_required(VERSION 3.22)
-project(P800 VERSION 0.4.0 LANGUAGES C CXX)
+project(P800 VERSION 0.5.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_OSX_DEPLOYMENT_TARGET "11.0" CACHE STRING "")
@@ -106,3 +106,14 @@ target_compile_definitions(preset_test PRIVATE JUCE_USE_CURL=0 JUCE_WEB_BROWSER=
 target_link_libraries(preset_test PRIVATE juce::juce_data_structures juce::juce_events juce::juce_core)
 add_test(NAME presets COMMAND preset_test)
 
+
+add_executable(sequencer_test tests/sequencer_test.cpp)
+target_include_directories(sequencer_test PRIVATE ${CORE_DIR} Source)
+add_test(NAME sequencer COMMAND sequencer_test)
+
+add_executable(seq_engine_test tests/seq_engine_test.cpp ${CORE_DIR}/poly800_core_m6.c)
+target_include_directories(seq_engine_test PRIVATE ${CORE_DIR} Source)
+if(NOT MSVC)
+    target_link_libraries(seq_engine_test PRIVATE m)
+endif()
+add_test(NAME seq_engine COMMAND seq_engine_test)

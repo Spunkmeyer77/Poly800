@@ -168,6 +168,8 @@ def build():
         ["Presets", "<b>BANK</b> (click to choose a bank), the preset name (click for the bank's list), "
                     "<b>&lt;</b> / <b>&gt;</b> to step through it, <b>SAVE</b>, <b>NEW BANK</b>, <b>DELETE</b> and the "
                     "favourite <b>star</b> (section 4)."],
+        ["Sequencer", "<b>SEQUENCER</b> swaps the parameter chart for the step sequencer screen (section 5); press it again "
+                      "for the chart. <b>PLAY</b> starts the sequencer and reads <b>STOP</b> while it runs."],
         ["Parameter chart", "Every sound parameter, laid out like the printed chart on the original. Each cell shows its name, "
                             "number, range and current value."],
     ], [32 * mm, W - 32 * mm]))
@@ -215,7 +217,8 @@ def build():
         "the number, and in PROG mode the keypad loads a preset by number from the bank shown.",
         "<b>SAVE</b> stores the current sound: give it a name and choose the bank. Saving under an existing name asks "
         "before replacing it. A preset stores all the sound parameters, the effect type and speed, the bend range, "
-        "the key assign mode and the chord memory (not volume, tune or the joystick).",
+        "the key assign mode, the chord memory and the sequencer's eight patterns (not volume, tune or the joystick). "
+        "Loading a factory program keeps the patterns you have.",
         "<b>DELETE</b> removes the current preset (user banks only). The bank menu can delete a whole bank, open a "
         "preset file from anywhere, or show the preset folder.",
         "The <b>star</b> adds or removes the current preset from Favourites.",
@@ -253,7 +256,52 @@ def build():
         "highest note held.", body)]
 
     # 5. Parameter reference.
-    s += [PageBreak(), Paragraph("5. Parameter reference", h1)]
+    # 5. Sequencer.
+    s += [PageBreak(), Paragraph("5. Step sequencer", h1), Paragraph(
+        "A polyphonic step sequencer of 16 or 32 steps, with eight patterns (A to H) and parameter locks. Press "
+        "<b>SEQUENCER</b> to show it in place of the parameter chart, and <b>PLAY</b> to run it. It keeps running "
+        "when you go back to the chart.", body)]
+    seq = DOCS / "sequencer.png"
+    if seq.exists():
+        s.append(Image(str(seq), width=W, height=W * 800 / 1440))
+        s.append(Spacer(1, 3 * mm))
+    s += [Paragraph("Top bar", h2)]
+    s += bullets([
+        "<b>LENGTH</b> 16 or 32 steps. Going from 16 to 32 with an empty second half copies the first half into it.",
+        "<b>PATTERN</b> A to H. Patterns that hold something read brighter. Switching pattern while playing carries on from the same step.",
+        "<b>RATE</b> (click): step length, 1/8, 1/16, 1/32, 1/8T or 1/16T. <b>SWING</b> 50% (straight) to 75% delays every "
+        "second step. <b>GATE</b> is how much of its last step a note sounds. Drag up/down or scroll to change them.",
+        "<b>SYNC</b>: <b>HOST</b> follows your DAW's tempo and transport (the sequencer plays while the DAW plays, if PLAY is on); "
+        "<b>INT</b> runs on its own clock at <b>BPM</b>, from step 1 when you press PLAY.",
+        "<b>OCT</b> scrolls the grid by an octave. <b>REC</b> records from your keyboard (below). <b>COPY</b> copies the "
+        "pattern and becomes <b>PASTE</b>: choose another pattern and press it. <b>CLEAR</b> empties the pattern.",
+    ])
+    s += [Paragraph("Notes", h2)]
+    s += bullets([
+        "The grid shows two octaves; each column is a step. <b>Click</b> an empty cell to add a note, <b>drag</b> to the "
+        "right to make it longer, and click a note to remove it.",
+        "Steps are polyphonic: up to 8 notes each, the synth's voice count (in DOUBLE mode the synth has 4 voices, so "
+        "bigger chords lose notes).",
+        "Clicking a step (or its number) selects it, outlined in the numbers row.",
+        "<b>Recording</b>: with REC on and the sequencer stopped, play a note or chord: it goes on the selected step, and "
+        "when you let go of all keys the selection moves to the next step. While playing, notes you play are added to "
+        "the nearest step.",
+    ])
+    s += [Paragraph("Lanes: probability, gate and parameter locks", h2)]
+    s += bullets([
+        "<b>PROB</b>: the chance (0-100%) that a step plays. Drag a bar; right-click or double-click resets it to 100%.",
+        "<b>GATE</b>: how long the step's notes sound, as a percentage of the global GATE.",
+        "<b>P-LOCK</b>: choose a parameter at the top of the lane (any chart parameter; the menu marks those with locks), "
+        "then drag a bar to lock that parameter to a value on that step. Steps without a lock show a dash and use the "
+        "panel value. Right-click or double-click removes a lock.",
+        "A step can lock several parameters: choose another parameter and draw its values. A red dot on a step number "
+        "means the step has locks. Locks hold for the length of their step.",
+    ])
+    s += [Paragraph(
+        "The Poly-800 has no velocity, so notes always play at the same level; use the filter and envelope parameters "
+        "(or locks on them) for accents.", small)]
+
+    s += [PageBreak(), Paragraph("6. Parameter reference", h1)]
     for section, rows in PARAMS:
         s.append(KeepTogether([Paragraph(section, h2),
                                table([["No.", "Name", "Range", "What it does"]] + [list(r) for r in rows],
@@ -275,7 +323,7 @@ def build():
     ], [45 * mm, 25 * mm, W - 70 * mm]))
 
     # 6. Factory programs.
-    s += [PageBreak(), Paragraph("6. Factory programs", h1), Paragraph(
+    s += [PageBreak(), Paragraph("7. Factory programs", h1), Paragraph(
         "The 64 original factory programs, decoded from a preserved factory cassette. Numbers are bank (1-8) "
         "and program (1-8), as on the original.", body)]
     progs = list(names.items())
@@ -287,7 +335,7 @@ def build():
     s.append(table(rows, [12 * mm, W / 2 - 12 * mm, 12 * mm, W / 2 - 12 * mm], header=False))
 
     # 7. About.
-    s += [PageBreak(), Paragraph("7. About P-800", h1), Paragraph(
+    s += [PageBreak(), Paragraph("8. About P-800", h1), Paragraph(
         "P-800 is built on <b>ISLA Poly-800</b> by Interspock, an open-source reconstruction of the Korg Poly-800 MkI / "
         "EX-800 that recovers its modulation generator, envelope tables and factory data from the original firmware and "
         "cassette. The filter and parts of the signal path derive from Nick Copeland's Bristol synthesizer emulator.", body),
@@ -301,7 +349,8 @@ def build():
         "setting, as on the original instrument.",
         "Noise (P33) is mixed at the oscillators' level; in the reconstruction it was about 19 dB too quiet to hear.",
         "Preset banks, with the original programs as the Factory bank.",
-        "Not included: the original's sequencer (P86-P88), and cassette or MIDI SysEx program transfer.",
+        "A new polyphonic step sequencer with parameter locks replaces the original's simple sequencer (P86-P88).",
+        "Not included: cassette or MIDI SysEx program transfer.",
     ])
     s += [Paragraph("Licence", h2), Paragraph(
         "P-800 is free software under the <b>GNU General Public License v3.0 or later</b>. You may use, study, share and "

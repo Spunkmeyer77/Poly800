@@ -117,6 +117,44 @@ void drawSectionLabel (juce::Graphics& g, juce::Rectangle<float> r, const juce::
     drawText (g, s, r, uiFont (15.0f, true), juce::Colour (0xff2a2a2c));
 }
 
+// Panel button, backlit-rubber style. 'showLed' is unused (kept so call sites read the same).
+void drawPanelButton (juce::Graphics& g, juce::Rectangle<float> r, const juce::String& text, bool selected,
+                      bool enabled = true, bool showLed = true, juce::Colour textColour = cCream, float fontSize = 11.0f,
+                      bool tintWhenSelected = true)
+{
+    // Backlit rubber: dark pad; when selected the legend and outline glow amber.
+    {
+        g.setColour (juce::Colours::black.withAlpha (0.5f));
+        g.fillRoundedRectangle (r.translated (0, 1.5f), 5.0f);
+        juce::ColourGradient grad (juce::Colour (0xff26272b), r.getX(), r.getY(), juce::Colour (0xff18181b), r.getX(), r.getBottom(), false);
+        g.setGradientFill (grad);
+        g.fillRoundedRectangle (r, 5.0f);
+        if (selected)
+        {
+            g.setColour (cAccent.withAlpha (tintWhenSelected ? 0.16f : 0.0f));
+            g.fillRoundedRectangle (r.reduced (1.5f), 4.0f);
+            g.setColour (cAccent.withAlpha (0.7f));
+            g.drawRoundedRectangle (r.reduced (1.0f), 4.5f, 1.0f);
+        }
+        g.setColour (juce::Colours::black);
+        g.drawRoundedRectangle (r, 5.0f, 1.0f);
+        g.setFont (uiFont (fontSize, true));
+        juce::ignoreUnused (showLed);
+        if (selected)
+        {
+            g.setColour (cAccent.withAlpha (0.35f));
+            g.drawText (text, r.translated (0, 1), juce::Justification::centred, false);
+            g.drawText (text, r.translated (0, -1), juce::Justification::centred, false);
+        }
+        g.setColour (! enabled ? juce::Colour (0xff4a4844)
+                     : (selected ? cAccent.brighter (0.3f) : (textColour == cCream ? juce::Colour (0xffa39d92) : textColour)));
+        g.drawText (text, r, juce::Justification::centred, false);
+        return;
+    }
+}
+
+
+
 struct ChartDef { int number; const char* label; const char* hi; const char* lo; };
 struct GroupDef { const char* name; std::vector<ChartDef> cells; };
 
@@ -210,6 +248,8 @@ void PanelView::buildLayout()
     }
     downR = { 800, 210, 40, 152 };
     upR = { 860, 210, 40, 152 };
+    seqBtnR = { 930, 210, 120, 70 };
+    playBtnR = { 930, 292, 120, 70 };
 
     // Right: performance switches.
     voicesR = { 1100, 80, 90, 64 };
@@ -257,8 +297,67 @@ void PanelView::buildLayout()
     }
 }
 
-Hit PanelView::hitTest (juce::Point<float> p) const
+namespace
 {
+// Top bar of the sequencer screen (design coordinates).
+struct SeqBar
+{
+    static constexpr float y = 423, h = 22;
+    static juce::Rectangle<float> len (int i)     { return { 220.0f + (float) i * 34.0f, y, 30, h }; }
+    static juce::Rectangle<float> pattern (int i) { return { 348.0f + (float) i * 26.0f, y, 23, h }; }
+    static juce::Rectangle<float> rate()          { return { 598, y, 50, h }; }
+    static juce::Rectangle<float> swing()         { return { 698, y, 46, h }; }
+    static juce::Rectangle<float> gate()          { return { 786, y, 46, h }; }
+    static juce::Rectangle<float> sync (int i)    { return i == 0 ? juce::Rectangle<float> { 874, y, 44, h } : juce::Rectangle<float> { 922, y, 34, h }; }
+    static juce::Rectangle<float> bpm()           { return { 992, y, 50, h }; }
+    static juce::Rectangle<float> octUp()         { return { 1080, y, 24, h }; }
+    static juce::Rectangle<float> octDown()       { return { 1108, y, 24, h }; }
+    static juce::Rectangle<float> rec()           { return { 1146, y, 52, h }; }
+    static juce::Rectangle<float> copy()          { return { 1204, y, 60, h }; }
+    static juce::Rectangle<float> clear()         { return { 1270, y, 56, h }; }
+    static juce::Rectangle<float> laneTab (int i) { return { 30.0f, 692.0f + (float) i * 27.0f, 62, 23 }; }
+    static constexpr float numY = 452, numH = 14;
+};
+} // namespace
+
+Hit PanelView::hitTest (juce::Point<float> p, const PanelState& st) const
+{
+    if (seqBtnR.contains (p)) return { HitKind::seqToggle };
+    if (playBtnR.contains (p)) return { HitKind::seqPlay };
+    if (st.seq.visible && juce::Rectangle<float> (22, 414, 1396, 364).contains (p))
+    {
+        const auto& q = st.seq;
+        const int length = q.data.pat().length;
+        for (int i = 0; i < 2; ++i) if (SeqBar::len (i).contains (p)) return { HitKind::seqLength, i };
+        for (int i = 0; i < kSeqPatterns; ++i) if (SeqBar::pattern (i).contains (p)) return { HitKind::seqPattern, i };
+        if (SeqBar::rate().contains (p)) return { HitKind::seqRate };
+        if (SeqBar::swing().contains (p)) return { HitKind::seqSwing };
+        if (SeqBar::gate().contains (p)) return { HitKind::seqGate };
+        for (int i = 0; i < 2; ++i) if (SeqBar::sync (i).contains (p)) return { HitKind::seqSync, i };
+        if (SeqBar::bpm().contains (p)) return { HitKind::seqBpm };
+        if (SeqBar::octUp().contains (p)) return { HitKind::seqOctUp };
+        if (SeqBar::octDown().contains (p)) return { HitKind::seqOctDown };
+        if (SeqBar::rec().contains (p)) return { HitKind::seqRec };
+        if (SeqBar::copy().contains (p)) return { HitKind::seqCopy };
+        if (SeqBar::clear().contains (p)) return { HitKind::seqClear };
+        for (int i = 0; i < 3; ++i) if (SeqBar::laneTab (i).contains (p)) return { HitKind::seqLaneTab, i };
+        if (q.lane == 2 && seqLockParamArea().contains (p)) return { HitKind::seqLockParam };
+
+        const auto grid = seqGridArea();
+        const float colW = grid.getWidth() / (float) length;
+        if (p.x >= grid.getX() && p.x < grid.getRight())
+        {
+            const int step = juce::jlimit (0, length - 1, (int) ((p.x - grid.getX()) / colW));
+            if (p.y >= SeqBar::numY && p.y < SeqBar::numY + SeqBar::numH) return { HitKind::seqStepNumber, step };
+            if (grid.contains (p))
+            {
+                const int row = juce::jlimit (0, seqRows - 1, (int) ((grid.getBottom() - p.y) / (grid.getHeight() / (float) seqRows)));
+                return { HitKind::seqGrid, step, q.lowNote + row };
+            }
+            if (seqLaneValues().expanded (0, 4).contains (p)) return { HitKind::seqLane, step };
+        }
+        return {};
+    }
     if (joyBox.contains (p)) return { HitKind::joystick };
     if (volTrack.expanded (14, 8).contains (p)) return { HitKind::volume };
     if (tuneTrackR.expanded (4, 8).contains (p)) return { HitKind::tune };
@@ -377,11 +476,7 @@ void PanelView::paint (juce::Graphics& g, const PanelState& s) const
         drawKey (g, r, false, cAccent);
         drawText (g, label, r.translated (-12, r.getHeight() + 6).withSize (60, 18), uiFont (13.0f, true), cCream);
     }
-    g.setColour (juce::Colour (0xff2b2c2f));
-    g.fillRoundedRectangle (memoryR, 3.0f);
-    g.setColour (juce::Colours::black);
-    g.drawRoundedRectangle (memoryR, 3.0f, 1.0f);
-    drawText (g, "CHORD MEMORY", memoryR, uiFont (12.0f, true), s.chordMode ? cAccent : cCream);
+    drawPanelButton (g, memoryR, "CHORD MEMORY", false, true, false, cCream, 12.0f);
 
     paintDisplay (g, s);
 
@@ -416,13 +511,7 @@ void PanelView::paint (juce::Graphics& g, const PanelState& s) const
     const char* typeNames[3] = { "CHORUS", "PHASER", "ENSEMBLE" };
     for (int i = 0; i < 3; ++i)
     {
-        const auto& r = chorusTypeR[(size_t) i];
-        const bool sel = s.chorusType == i;
-        g.setColour (sel ? cAccent : juce::Colour (0xff2b2c2f));
-        g.fillRoundedRectangle (r, 3.0f);
-        g.setColour (juce::Colours::black);
-        g.drawRoundedRectangle (r, 3.0f, 1.0f);
-        drawText (g, typeNames[i], r, uiFont (11.0f, true), sel ? cDark : cCream);
+        drawPanelButton (g, chorusTypeR[(size_t) i], typeNames[i], s.chorusType == i);
     }
     drawText (g, "TYPE", { 1300, 152, 100, 16 }, uiFont (12.0f, true), cCream);
 
@@ -442,7 +531,13 @@ void PanelView::paint (juce::Graphics& g, const PanelState& s) const
     drawSectionLabel (g, { 462, 386, 600, 22 }, utf8 ("PROGRAMMER \xc2\xb7 ") + (s.progEntry ? "PROGRAM ENTRY" : "PARAMETER ENTRY"), true);
     drawSectionLabel (g, { 1090, 386, 320, 22 }, "PERFORMANCE / EFFECTS / PRESETS", false);
 
-    paintChart (g, s);
+    // SEQUENCER swaps the parameter chart for the sequencer screen; PLAY / STOP runs it either way.
+    for (auto [r, label, on] : { std::tuple { seqBtnR, juce::String ("SEQUENCER"), s.seq.visible },
+                                 std::tuple { playBtnR, juce::String (s.seq.playing ? "STOP" : "PLAY"), s.seq.playing } })
+        drawPanelButton (g, r, label, on, true, false, cCream, 16.0f, false); // stays black; the word lights up
+
+    if (s.seq.visible) paintSequencer (g, s);
+    else               paintChart (g, s);
 }
 
 void PanelView::paintPresets (juce::Graphics& g, const PanelState& s) const
@@ -459,11 +554,8 @@ void PanelView::paintPresets (juce::Graphics& g, const PanelState& s) const
     };
     auto button = [&] (juce::Rectangle<float> r, const juce::String& text, bool lit, bool enabled)
     {
-        g.setColour (lit ? cAccent : juce::Colour (0xff2b2c2f));
-        g.fillRoundedRectangle (r, 3.0f);
-        g.setColour (juce::Colours::black);
-        g.drawRoundedRectangle (r, 3.0f, 1.0f);
-        drawText (g, text, r, uiFont (12.0f, true), lit ? cDark : (enabled ? cCream : cDim.withAlpha (0.5f)));
+        // Momentary buttons (no LED); the star turns amber when the preset is a favourite.
+        drawPanelButton (g, r, text, false, enabled, false, lit ? cAccent : cCream, 12.0f);
     };
 
     box (bankR);
@@ -516,9 +608,202 @@ void PanelView::paintDisplay (juce::Graphics& g, const PanelState& s) const
 
     for (auto [r, t] : { std::pair { progPrevR, "\xe2\x97\x80 PROG" }, std::pair { progNextR, "PROG \xe2\x96\xb6" } })
     {
-        g.setColour (juce::Colour (0xff2b2c2f));
+        drawPanelButton (g, r, utf8 (t), false, true, false, cCream, 10.0f);
+    }
+}
+
+void PanelView::paintSequencer (juce::Graphics& g, const PanelState& s) const
+{
+    const auto& q = s.seq;
+    const auto& d = q.data;
+    const auto& pat = d.pat();
+    const int length = pat.length;
+    const auto chart = juce::Rectangle<float> (22, 414, 1396, 364);
+    g.setColour (cChartBg);
+    g.fillRoundedRectangle (chart, 4.0f);
+    g.setColour (juce::Colours::black);
+    g.drawRoundedRectangle (chart, 4.0f, 1.5f);
+
+    // ---- top bar ---------------------------------------------------------------------------
+    auto caption = [&] (float x, float w, const char* t)
+    {
+        drawText (g, t, { x, SeqBar::y - 2, w, SeqBar::h + 4 }, uiFont (10.0f, true), cDim, juce::Justification::centredLeft);
+    };
+    auto ledBox = [&] (juce::Rectangle<float> r, const juce::String& t, bool active = true)
+    {
+        g.setColour (juce::Colour (0xff060606));
         g.fillRoundedRectangle (r, 3.0f);
-        drawText (g, t, r, uiFont (11.0f, true), cCream);
+        g.setColour (juce::Colours::black);
+        g.drawRoundedRectangle (r, 3.0f, 1.0f);
+        drawText (g, t, r, ledFont (14.0f), active ? cLed : cLed.withAlpha (0.35f));
+    };
+    drawText (g, "STEP SEQUENCER", { 32, SeqBar::y - 2, 140, SeqBar::h + 4 }, uiFont (13.0f, true), cAccent, juce::Justification::centredLeft);
+    caption (176, 44, "LENGTH");
+    drawPanelButton (g, SeqBar::len (0), "16", length == 16);
+    drawPanelButton (g, SeqBar::len (1), "32", length == 32);
+    caption (296, 52, "PATTERN");
+    for (int i = 0; i < kSeqPatterns; ++i)
+    {
+        // Patterns holding something read brighter than empty ones.
+        const bool used = ! d.patternEmpty (i);
+        drawPanelButton (g, SeqBar::pattern (i), juce::String::charToString ((juce::juce_wchar) ('A' + i)), d.current == i,
+                         true, false, used ? cCream : cDim.withAlpha (0.6f));
+    }
+    caption (566, 32, "RATE");
+    ledBox (SeqBar::rate(), seqRates[juce::jlimit (0, numSeqRates - 1, d.settings.rate)].name);
+    caption (658, 40, "SWING");
+    ledBox (SeqBar::swing(), juce::String (d.settings.swing) + "%");
+    caption (754, 32, "GATE");
+    ledBox (SeqBar::gate(), juce::String (d.settings.gate) + "%");
+    caption (842, 32, "SYNC");
+    drawPanelButton (g, SeqBar::sync (0), "HOST", d.settings.hostSync);
+    drawPanelButton (g, SeqBar::sync (1), "INT", ! d.settings.hostSync);
+    caption (964, 28, "BPM");
+    if (d.settings.hostSync)
+        ledBox (SeqBar::bpm(), q.hostBpm > 0 ? juce::String (juce::roundToInt (q.hostBpm)) : juce::String ("HOST"), false);
+    else
+        ledBox (SeqBar::bpm(), juce::String (d.settings.bpm));
+    caption (1052, 28, "OCT");
+    drawPanelButton (g, SeqBar::octUp(), utf8 ("\xe2\x96\xb2"), false, true, false);
+    drawPanelButton (g, SeqBar::octDown(), utf8 ("\xe2\x96\xbc"), false, true, false);
+    drawPanelButton (g, SeqBar::rec(), "REC", q.recording, true, false, q.recording ? cLed : cCream);
+    drawPanelButton (g, SeqBar::copy(), q.pasteArmed ? "PASTE" : "COPY", q.pasteArmed, true, false);
+    drawPanelButton (g, SeqBar::clear(), "CLEAR", false, true, false);
+
+    // ---- note grid: 2 octaves, polyphonic ----------------------------------------------
+    const auto grid = seqGridArea();
+    const float gx = grid.getX(), gw = grid.getWidth(), gy = grid.getY(), gh = grid.getHeight();
+    const int rows = seqRows;
+    const float rowH = gh / (float) rows, colW = gw / (float) length;
+    auto isBlack = [] (int n) { const int pc = n % 12; return pc == 1 || pc == 3 || pc == 6 || pc == 8 || pc == 10; };
+
+    for (int r = 0; r < rows; ++r)
+    {
+        const int note = q.lowNote + r;
+        const auto key = juce::Rectangle<float> (30, gy + gh - (float) (r + 1) * rowH, 62, rowH);
+        g.setColour (isBlack (note) ? juce::Colour (0xff1a1a1c) : juce::Colour (0xffd8d0bb));
+        g.fillRect (key.reduced (0, 0.5f));
+        if (note % 12 == 0)
+            drawText (g, "C" + juce::String (note / 12 - 2), key.withTrimmedLeft (4), uiFont (9.0f, true),
+                      juce::Colour (0xff2a2a2c), juce::Justification::centredLeft);
+        g.setColour (isBlack (note) ? juce::Colour (0xff1b1c1f) : juce::Colour (0xff26272b));
+        g.fillRect (juce::Rectangle<float> (gx, key.getY(), gw, rowH));
+    }
+    if (q.playStep >= 0 && q.playStep < length)
+    {
+        g.setColour (cAccent.withAlpha (0.16f));
+        g.fillRect (juce::Rectangle<float> (gx + (float) q.playStep * colW, gy, colW, gh));
+    }
+    if (q.selectedStep >= 0 && q.selectedStep < length)
+    {
+        g.setColour (juce::Colours::white.withAlpha (0.05f));
+        g.fillRect (juce::Rectangle<float> (gx + (float) q.selectedStep * colW, gy, colW, gh));
+    }
+    for (int c = 0; c <= length; ++c)
+    {
+        const bool beat = c % 4 == 0;
+        g.setColour (beat ? juce::Colour (0xff4a4b50) : juce::Colour (0xff303136));
+        g.drawLine (gx + (float) c * colW, gy, gx + (float) c * colW, gy + gh, beat ? 1.5f : 1.0f);
+    }
+    for (int r = 0; r <= rows; r += 12)
+    {
+        g.setColour (juce::Colour (0xff4a4b50));
+        g.drawLine (gx, gy + (float) r * rowH, gx + gw, gy + (float) r * rowH, 1.0f);
+    }
+
+    // step numbers: playhead lit, selected step outlined, red dot = parameter locks on that step
+    for (int c = 0; c < length; ++c)
+    {
+        const auto cell = juce::Rectangle<float> (gx + (float) c * colW, SeqBar::numY, colW, SeqBar::numH);
+        const bool on = c == q.playStep;
+        if (on) { g.setColour (cAccent); g.fillRect (cell.reduced (1, 0)); }
+        else if (c == q.selectedStep) { g.setColour (cCream.withAlpha (0.5f)); g.drawRect (cell.reduced (1, 0), 1.0f); }
+        drawText (g, juce::String (c + 1), cell, uiFont (length == 32 ? 9.0f : 11.0f, true),
+                  on ? cDark : (c % 4 == 0 ? cCream : cDim));
+        if (pat.steps[(size_t) c].hasLocks())
+        {
+            g.setColour (cLed);
+            g.fillEllipse (juce::Rectangle<float> (5, 5).withCentre ({ cell.getRight() - 6, cell.getCentreY() }));
+        }
+    }
+
+    // notes (notes outside the 2 octaves shown are marked at the top or bottom edge)
+    for (int st = 0; st < length; ++st)
+        for (const auto& n : pat.steps[(size_t) st].notes)
+        {
+            if (! n.used()) continue;
+            const int r = n.note - q.lowNote;
+            const float w = colW * (float) juce::jmin ((int) n.length, length - st) - 3.0f;
+            if (r < 0 || r >= rows)
+            {
+                g.setColour (cAccent.withAlpha (0.6f));
+                g.fillRect (juce::Rectangle<float> (gx + (float) st * colW + 1.5f, r < 0 ? gy + gh - 2.0f : gy, w, 2.0f));
+                continue;
+            }
+            const auto rr = juce::Rectangle<float> (gx + (float) st * colW + 1.5f, gy + gh - (float) (r + 1) * rowH + 0.5f, w, rowH - 1.0f);
+            const float prob = pat.steps[(size_t) st].probability / 100.0f;
+            g.setColour (cAccent.withMultipliedBrightness (0.55f + 0.45f * prob));
+            g.fillRoundedRectangle (rr, 2.0f);
+            g.setColour (cAccent.brighter (0.4f));
+            g.drawRoundedRectangle (rr, 2.0f, 1.0f);
+        }
+
+    // ---- lane: probability / gate / parameter lock -----------------------------------------
+    const float ly = 692, lh = 80;
+    const char* tabs[3] = { "PROB", "GATE", "P-LOCK" };
+    for (int i = 0; i < 3; ++i)
+        drawPanelButton (g, SeqBar::laneTab (i), tabs[i], q.lane == i, true, true, cCream, 9.5f);
+    g.setColour (juce::Colour (0xff17171a));
+    g.fillRect (juce::Rectangle<float> (gx, ly, gw, lh));
+    for (int c = 0; c <= length; c += 4)
+    {
+        g.setColour (juce::Colour (0xff3a3b40));
+        g.drawLine (gx + (float) c * colW, ly, gx + (float) c * colW, ly + lh, 1.0f);
+    }
+
+    const auto values = seqLaneValues();
+    const auto sel = seqLockParamArea();
+    g.setColour (juce::Colour (0xff060606));
+    g.fillRoundedRectangle (sel, 3.0f);
+    if (q.lane == 2)
+    {
+        const auto& spec = params[q.lockParam];
+        drawText (g, juce::String (spec.number) + " " + juce::String (spec.name).toUpperCase() + utf8 ("  \xe2\x96\xbc"),
+                  sel, ledFont (12.0f), cLed);
+    }
+    else
+        drawText (g, q.lane == 0 ? "PROBABILITY %" : "GATE % (OF GLOBAL GATE)", sel, uiFont (10.0f, true), cDim);
+
+    for (int c = 0; c < length; ++c)
+    {
+        const auto& stp = pat.steps[(size_t) c];
+        const auto col = juce::Rectangle<float> (gx + (float) c * colW, values.getY(), colW, values.getHeight());
+        float f = 0.0f;
+        juce::String label;
+        bool show = true, dim = false;
+        if (q.lane == 2)
+        {
+            const int v = stp.locks[(size_t) q.lockParam];
+            if (v < 0) { drawText (g, "-", col, uiFont (12.0f), cDim.withAlpha (0.5f)); continue; }
+            const auto& spec = params[q.lockParam];
+            f = (float) (v - spec.minValue) / (float) juce::jmax (1, spec.maxValue - spec.minValue);
+            label = juce::String (v);
+        }
+        else
+        {
+            const int v = q.lane == 0 ? stp.probability : stp.gate;
+            f = (float) v / 100.0f;
+            dim = stp.noteCount() == 0;
+            show = ! dim || v != 100;
+            label = v == 100 ? juce::String() : juce::String (v);
+        }
+        if (! show) continue;
+        const auto bar = col.reduced (colW * 0.18f, 0).withTop (col.getBottom() - juce::jmax (2.0f, f * col.getHeight()));
+        const auto colour = q.lane == 2 ? cLed : cAccent;
+        g.setColour (dim ? colour.withAlpha (0.25f) : colour.withAlpha (0.85f));
+        g.fillRect (bar);
+        if (label.isNotEmpty())
+            drawText (g, label, col.withHeight (12).translated (0, -13), uiFont (9.0f, true), cCream);
     }
 }
 

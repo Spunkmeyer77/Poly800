@@ -1,0 +1,394 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// P-800 step sequencer: polyphonic, 16 or 32 steps, 8 patterns, with per-step
+// probability, gate and parameter locks (several parameters per step).
+// JUCE-free so it can be unit tested; the processor owns one SeqData (edited on
+// the message thread) and one SeqPlayer (audio thread) that works on a copy.
+#pragma once
+
+#include "ParamSpec.h"
+#include <algorithm>
+#include <array>
+#include <cmath>
+#include <cstdint>
+#include <cstdio>
+#include <cstdlib>
+#include <sstream>
+#include <string>
+
+namespace p800
+{
+constexpr int kSeqMaxSteps = 32;
+constexpr int kSeqMaxNotes = 8;    // the synth's voice count
+constexpr int kSeqPatterns = 8;    // A..H
+
+struct SeqNote
+{
+    int8_t note = -1;              // -1 = empty slot
+    uint8_t velocity = 100;
+    uint8_t length = 1;            // in steps
+    bool used() const { return note >= 0; }
+};
+
+struct SeqStep
+{
+    std::array<SeqNote, kSeqMaxNotes> notes {};
+    uint8_t probability = 100;     // % chance the step plays
+    uint8_t gate = 100;            // % of the global gate, for this step
+    std::array<int16_t, numParams> locks; // per parameter (index into p800::params), -1 = not locked
+
+    SeqStep() { locks.fill (-1); }
+    int noteCount() const { int n = 0; for (auto& x : notes) n += x.used() ? 1 : 0; return n; }
+    bool hasLocks() const { for (auto v : locks) if (v >= 0) return true; return false; }
+    bool empty() const { return noteCount() == 0 && ! hasLocks(); }
+};
+
+struct SeqPattern
+{
+    int length = 16;               // 16 or 32
+    std::array<SeqStep, kSeqMaxSteps> steps {};
+};
+
+struct SeqSettings
+{
+    int rate = 1;                  // index into seqRates
+    int swing = 50;                // 50 (straight) .. 75 %
+    int gate = 75;                 // % of a step, for the last step of a note
+    bool hostSync = true;          // follow the host transport / internal clock
+    int bpm = 120;                 // internal clock
+};
+
+struct SeqRate { const char* name; double stepsPerBeat; };
+inline constexpr SeqRate seqRates[] = { { "1/8", 2.0 }, { "1/16", 4.0 }, { "1/32", 8.0 }, { "1/8T", 3.0 }, { "1/16T", 6.0 } };
+inline constexpr int numSeqRates = (int) (sizeof (seqRates) / sizeof (seqRates[0]));
+
+// ---- the editable data (message thread) ------------------------------------------------------
+struct SeqData
+{
+    SeqSettings settings;
+    std::array<SeqPattern, kSeqPatterns> patterns {};
+    int current = 0;               // pattern being played and edited
+
+    SeqPattern& pat() { return patterns[(size_t) current]; }
+    const SeqPattern& pat() const { return patterns[(size_t) current]; }
+
+    // Index of the note starting at 'step' with this pitch, or of a longer note covering it.
+    // Returns the start step in startOut; -1 if none.
+    int findNote (int step, int note, int& startOut) const
+    {
+        const auto& p = pat();
+        for (int s = step; s >= 0; --s)
+            for (int i = 0; i < kSeqMaxNotes; ++i)
+            {
+                const auto& n = p.steps[(size_t) s].notes[(size_t) i];
+                if (n.used() && n.note == note && s + n.length > step) { startOut = s; return i; }
+            }
+        startOut = -1;
+        return -1;
+    }
+
+    // Adds a note; false if the step is full (8 notes) or the pitch is already there.
+    bool addNote (int step, int note, int length = 1, int velocity = 100)
+    {
+        if (step < 0 || step >= kSeqMaxSteps || note < 0 || note > 127) return false;
+        auto& st = pat().steps[(size_t) step];
+        for (auto& n : st.notes) if (n.used() && n.note == note) return false;
+        for (auto& n : st.notes)
+            if (! n.used())
+            {
+                n.note = (int8_t) note;
+                n.velocity = (uint8_t) std::clamp (velocity, 1, 127);
+                n.length = (uint8_t) std::clamp (length, 1, kSeqMaxSteps);
+                return true;
+            }
+        return false;
+    }
+
+    void removeNote (int step, int index) { pat().steps[(size_t) step].notes[(size_t) index] = SeqNote(); }
+
+    void setNoteLength (int step, int index, int length)
+    {
+        auto& n = pat().steps[(size_t) step].notes[(size_t) index];
+        if (n.used()) n.length = (uint8_t) std::clamp (length, 1, pat().length - step);
+    }
+
+    void setLock (int step, int paramIndex, int value)
+    {
+        const auto& s = params[paramIndex];
+        pat().steps[(size_t) step].locks[(size_t) paramIndex] = (int16_t) std::clamp (value, s.minValue, s.maxValue);
+    }
+    void clearLock (int step, int paramIndex) { pat().steps[(size_t) step].locks[(size_t) paramIndex] = -1; }
+    void clearLocksFor (int paramIndex) { for (auto& st : pat().steps) st.locks[(size_t) paramIndex] = -1; }
+    bool patternHasLocksFor (int paramIndex) const
+    {
+        for (int s = 0; s < pat().length; ++s) if (pat().steps[(size_t) s].locks[(size_t) paramIndex] >= 0) return true;
+        return false;
+    }
+
+    void clearPattern() { const int len = pat().length; pat() = SeqPattern(); pat().length = len; }
+    bool patternEmpty (int index) const
+    {
+        for (auto& st : patterns[(size_t) index].steps) if (! st.empty()) return false;
+        return true;
+    }
+
+    // ---- save format: one line of text, robust to missing fields -----------------------------
+    // "P800SEQ1 rate swing gate sync bpm current | len s:prob,gate,n.vel.len/..,locks idx=v/.. ; ... | ..."
+    std::string serialise() const
+    {
+        std::ostringstream o;
+        o << "P800SEQ1 " << settings.rate << ' ' << settings.swing << ' ' << settings.gate << ' '
+          << (settings.hostSync ? 1 : 0) << ' ' << settings.bpm << ' ' << current;
+        for (const auto& p : patterns)
+        {
+            o << " |" << p.length;
+            for (int s = 0; s < kSeqMaxSteps; ++s)
+            {
+                const auto& st = p.steps[(size_t) s];
+                if (st.empty() && st.probability == 100 && st.gate == 100) continue;
+                o << ' ' << s << ':' << (int) st.probability << ',' << (int) st.gate << ',';
+                bool first = true;
+                for (const auto& n : st.notes)
+                    if (n.used()) { o << (first ? "" : "/") << (int) n.note << '.' << (int) n.velocity << '.' << (int) n.length; first = false; }
+                o << ',';
+                first = true;
+                for (int i = 0; i < numParams; ++i)
+                    if (st.locks[(size_t) i] >= 0) { o << (first ? "" : "/") << i << '=' << st.locks[(size_t) i]; first = false; }
+            }
+        }
+        return o.str();
+    }
+
+    bool deserialise (const std::string& text)
+    {
+        if (text.rfind ("P800SEQ1", 0) != 0) return false;
+        SeqData d;
+        const auto bar = text.find ('|');
+        {
+            std::istringstream h (text.substr (8, bar == std::string::npos ? std::string::npos : bar - 8));
+            int sync = 1;
+            h >> d.settings.rate >> d.settings.swing >> d.settings.gate >> sync >> d.settings.bpm >> d.current;
+            d.settings.rate = std::clamp (d.settings.rate, 0, numSeqRates - 1);
+            d.settings.swing = std::clamp (d.settings.swing, 50, 75);
+            d.settings.gate = std::clamp (d.settings.gate, 5, 100);
+            d.settings.hostSync = sync != 0;
+            d.settings.bpm = std::clamp (d.settings.bpm, 30, 300);
+            d.current = std::clamp (d.current, 0, kSeqPatterns - 1);
+        }
+        size_t pos = bar;
+        for (int pi = 0; pi < kSeqPatterns && pos != std::string::npos; ++pi)
+        {
+            const auto next = text.find ('|', pos + 1);
+            std::istringstream ps (text.substr (pos + 1, next == std::string::npos ? std::string::npos : next - pos - 1));
+            auto& p = d.patterns[(size_t) pi];
+            ps >> p.length;
+            p.length = p.length == 32 ? 32 : 16;
+            std::string tok;
+            while (ps >> tok)
+            {
+                const auto colon = tok.find (':');
+                if (colon == std::string::npos) continue;
+                const int s = std::atoi (tok.substr (0, colon).c_str());
+                if (s < 0 || s >= kSeqMaxSteps) continue;
+                auto& st = p.steps[(size_t) s];
+                std::string fields[4];
+                {
+                    std::istringstream fs (tok.substr (colon + 1));
+                    for (auto& f : fields) std::getline (fs, f, ',');
+                }
+                st.probability = (uint8_t) std::clamp (std::atoi (fields[0].c_str()), 0, 100);
+                st.gate = (uint8_t) std::clamp (std::atoi (fields[1].c_str()), 1, 100);
+                std::istringstream ns (fields[2]);
+                std::string nt;
+                int ni = 0;
+                while (std::getline (ns, nt, '/') && ni < kSeqMaxNotes)
+                {
+                    int note = -1, vel = 100, len = 1;
+                    if (std::sscanf (nt.c_str(), "%d.%d.%d", &note, &vel, &len) >= 1 && note >= 0 && note <= 127)
+                        st.notes[(size_t) ni++] = { (int8_t) note, (uint8_t) std::clamp (vel, 1, 127), (uint8_t) std::clamp (len, 1, kSeqMaxSteps) };
+                }
+                std::istringstream ls (fields[3]);
+                std::string lt;
+                while (std::getline (ls, lt, '/'))
+                {
+                    int idx = -1, v = -1;
+                    if (std::sscanf (lt.c_str(), "%d=%d", &idx, &v) == 2 && idx >= 0 && idx < numParams)
+                        st.locks[(size_t) idx] = (int16_t) std::clamp (v, params[idx].minValue, params[idx].maxValue);
+                }
+            }
+            pos = next;
+        }
+        *this = d;
+        return true;
+    }
+};
+
+// ---- playback (audio thread) ------------------------------------------------------------------
+struct SeqTransport
+{
+    bool hasHost = false;          // the host reports a position
+    bool hostPlaying = false;
+    double ppq = 0.0;              // host position in beats at the block start
+    double bpm = 120.0;            // host tempo
+};
+
+struct SeqEvent
+{
+    enum Type { noteOff = 0, step = 1, noteOn = 2 }; // this order at equal offsets
+    int offset = 0;
+    Type type = step;
+    int note = 0, velocity = 0, stepIndex = 0;
+};
+
+class SeqPlayer
+{
+public:
+    static constexpr int maxEvents = 512;
+
+    void prepare (double sampleRate) { sr = sampleRate; reset(); }
+    void reset() { pendingCount = 0; running = false; lastStep = -1; pos = 0.0; }
+    void setData (const SeqData& d) { data = d; }
+    const SeqData& getData() const { return data; }
+
+    int currentStep() const { return running ? lastStep : -1; }
+    double position() const { return pos; }    // in steps, for live recording
+    bool isRunning() const { return running; }
+
+    // Locks of the step playing now, or nullptr.
+    const int16_t* activeLocks() const
+    {
+        if (! running || lastStep < 0) return nullptr;
+        const auto& st = data.pat().steps[(size_t) lastStep];
+        return st.hasLocks() ? st.locks.data() : nullptr;
+    }
+
+    // Fills 'out' with this block's events, sorted by offset. Returns how many.
+    int process (int numSamples, const SeqTransport& t, bool run, SeqEvent* out)
+    {
+        int count = 0;
+        auto emit = [&] (SeqEvent e) { if (count < maxEvents) out[count++] = e; };
+
+        const auto& st = data.settings;
+        const bool useHost = st.hostSync && t.hasHost;
+        const bool shouldRun = run && (useHost ? t.hostPlaying : true);
+        const double spb = seqRates[std::clamp (st.rate, 0, numSeqRates - 1)].stepsPerBeat;
+        const double bpm = useHost ? std::max (1.0, t.bpm) : (double) st.bpm;
+        const double stepsPerSample = bpm / 60.0 * spb / sr;
+
+        if (! shouldRun)
+        {
+            if (running) { releaseAll (0, emit); running = false; lastStep = -1; }
+            sortEvents (out, count);
+            return count;
+        }
+
+        double start = useHost ? t.ppq * spb : (running ? pos : 0.0);
+        if (! running)
+        {
+            running = true;
+            lastStep = -1;
+            // Starting exactly on a step plays it; starting mid-step waits for the next.
+            if (! useHost) start = 0.0;
+            expectedStart = start;
+        }
+        else if (std::abs (start - expectedStart) > 0.01)
+        {
+            releaseAll (0, emit); // host jumped or looped
+        }
+        const double end = start + numSamples * stepsPerSample;
+        const double swingOffset = (std::clamp (st.swing, 50, 75) / 100.0 - 0.5) * 2.0;
+        const auto& p = data.pat();
+
+        // Note-offs falling in this block.
+        for (int i = 0; i < pendingCount;)
+        {
+            if (pending[i].endPos < end)
+            {
+                emit ({ toOffset (pending[i].endPos, start, stepsPerSample, numSamples), SeqEvent::noteOff, pending[i].note, 0, 0 });
+                pending[i] = pending[--pendingCount];
+            }
+            else ++i;
+        }
+
+        // Steps starting in this block (odd steps are delayed by the swing).
+        const long long kFirst = (long long) std::floor (start) - 1, kLast = (long long) std::ceil (end) + 1;
+        for (long long k = kFirst; k <= kLast; ++k)
+        {
+            if (k < 0) continue;
+            const double tk = (double) k + ((k & 1) ? swingOffset : 0.0);
+            if (tk < start - 1e-9 || tk >= end) continue;
+            const int stepIndex = (int) (k % p.length);
+            const int offset = toOffset (tk, start, stepsPerSample, numSamples);
+            lastStep = stepIndex;
+            emit ({ offset, SeqEvent::step, 0, 0, stepIndex });
+
+            const auto& step = p.steps[(size_t) stepIndex];
+            if (step.noteCount() == 0) continue;
+            if (step.probability < 100 && (int) (nextRandom() % 100) >= step.probability) continue;
+            const double gateFrac = std::max (0.05, step.gate / 100.0 * std::clamp (st.gate, 5, 100) / 100.0);
+            for (const auto& n : step.notes)
+            {
+                if (! n.used()) continue;
+                // Retrigger: end a still-sounding copy of the same note first.
+                for (int i = 0; i < pendingCount; ++i)
+                    if (pending[i].note == n.note)
+                    {
+                        emit ({ offset, SeqEvent::noteOff, n.note, 0, 0 });
+                        pending[i] = pending[--pendingCount];
+                        break;
+                    }
+                emit ({ offset, SeqEvent::noteOn, n.note, n.velocity, stepIndex });
+                if (pendingCount < (int) pending.size())
+                    pending[(size_t) pendingCount++] = { n.note, tk + (n.length - 1) + gateFrac };
+            }
+        }
+
+        // Note-offs that also fall inside this block after being created in it.
+        for (int i = 0; i < pendingCount;)
+        {
+            if (pending[i].endPos < end)
+            {
+                emit ({ toOffset (pending[i].endPos, start, stepsPerSample, numSamples), SeqEvent::noteOff, pending[i].note, 0, 0 });
+                pending[i] = pending[--pendingCount];
+            }
+            else ++i;
+        }
+
+        pos = end;
+        expectedStart = end;
+        sortEvents (out, count);
+        return count;
+    }
+
+private:
+    struct Pending { int note; double endPos; };
+    SeqData data;
+    double sr = 48000.0;
+    bool running = false;
+    int lastStep = -1;
+    double pos = 0.0, expectedStart = 0.0;
+    std::array<Pending, 128> pending {};
+    int pendingCount = 0;
+    uint32_t rng = 0x12345678u;
+
+    uint32_t nextRandom() { rng ^= rng << 13; rng ^= rng >> 17; rng ^= rng << 5; return rng; }
+
+    static int toOffset (double at, double start, double stepsPerSample, int numSamples)
+    {
+        return std::clamp ((int) std::floor ((at - start) / stepsPerSample), 0, std::max (0, numSamples - 1));
+    }
+
+    template <typename Emit>
+    void releaseAll (int offset, Emit& emit)
+    {
+        for (int i = 0; i < pendingCount; ++i)
+            emit ({ offset, SeqEvent::noteOff, pending[i].note, 0, 0 });
+        pendingCount = 0;
+    }
+
+    static void sortEvents (SeqEvent* e, int n)
+    {
+        std::stable_sort (e, e + n, [] (const SeqEvent& a, const SeqEvent& b)
+                          { return a.offset != b.offset ? a.offset < b.offset : (int) a.type < (int) b.type; });
+    }
+};
+} // namespace p800

@@ -3,7 +3,7 @@
 AU / VST3 instrument by Ticco Ross, built on the ISLA Poly-800 synthesis core
 (`../src`). GPL-3.0-or-later, like the core.
 
-## Status: 0.4.0
+## Status: 0.5.0
 
 ![P-800 panel](docs/panel.png)
 
@@ -34,6 +34,13 @@ AU / VST3 instrument by Ticco Ross, built on the ISLA Poly-800 synthesis core
   - **Joystick Y up** adds the MG triangle to the DCOs (vibrato), **Y down**
     adds it to the VCF, on top of the program's P83/P84, up to full depth.
 - MIDI pitch wheel adds to Joystick X; mod wheel (CC1) acts like joystick up.
+- **Step sequencer** (`Source/Sequencer.h`): SEQUENCER swaps the chart for the
+  sequencer screen, PLAY/STOP runs it. 16 or 32 steps, 8 patterns, polyphonic
+  (8 notes per step), rate/swing/gate, host sync or internal BPM, per-step
+  probability and gate, parameter locks on any chart parameter (several per
+  step), keyboard recording (step and live), copy/paste/clear. Patterns are
+  saved in presets and with the session.
+- Buttons: backlit-rubber style throughout.
 
 ## Core additions
 
@@ -93,6 +100,11 @@ parameters.
 juce_core, juce_events and juce_graphics); `docs/panel.png` comes from it.
 
 ## Tests
+
+`tests/sequencer_test.cpp` checks editing rules, timing (internal and host
+sync, loops), swing, gate, chords, 32 steps, probability, locks and the save
+format. `tests/seq_engine_test.cpp` plays patterns through the synth engine and
+checks that steps sound, go silent, and that a cutoff lock changes the sound.
 
 `tests/preset_test.cpp` checks banks, save/load, overwrite, numbering,
 previous/next, favourites, deleting and opening files (temporary folder).

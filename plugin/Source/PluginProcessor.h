@@ -6,8 +6,9 @@
 #include "Engine.h"
 #include "KeyLayer.h"
 #include "PresetManager.h"
+#include "Sequencer.h"
 
-class P800Processor : public juce::AudioProcessor, public p800::PresetTarget
+class P800Processor : public juce::AudioProcessor, public p800::PresetTarget, private juce::Timer
 {
 public:
     P800Processor();
@@ -55,13 +56,45 @@ public:
     int numFactory() const override;
     juce::String factoryName (int index) const override;
 
+    // ---- step sequencer (message thread unless noted) -------------------------------------
+    p800::SeqData getSeqData() const;                              // a copy, for drawing
+    void editSeq (const std::function<void (p800::SeqData&)>& change); // edit and publish
+    int  getSeqVersion() const          { return seqVersion.load(); }
+    void setSeqRun (bool run)           { seqRun.store (run); }
+    bool getSeqRun() const              { return seqRun.load(); }
+    int  getSeqPlayStep() const         { return seqPlayStep.load(); } // -1 when stopped
+    void setSeqRecording (bool rec)     { seqRecording.store (rec); heldForStepRec = 0; }
+    bool getSeqRecording() const        { return seqRecording.load(); }
+    void setSeqSelectedStep (int step)  { seqSelectedStep.store (step); }
+    int  getSeqSelectedStep() const     { return seqSelectedStep.load(); }
+    double getHostBpm() const           { return hostBpm.load(); }  // 0 if the host gives none
+
 private:
     static const juce::StringArray& soundParamIds(); // everything a preset stores
     void setParamValue (const juce::String& id, float value);
     std::unique_ptr<p800::PresetManager> presets;
 
     static juce::AudioProcessorValueTreeState::ParameterLayout createLayout();
-    Poly800Params currentCoreParams() const;
+    Poly800Params currentCoreParams (const int16_t* locks = nullptr) const;
+    void timerCallback() override;      // applies notes recorded from the keyboard
+
+    // Sequencer: the model is edited on the message thread under seqLock; the player
+    // (audio thread) takes a copy whenever seqVersion changes.
+    p800::SeqData seqModel;
+    mutable juce::CriticalSection seqLock;
+    std::atomic<int> seqVersion { 1 };
+    int playerVersion = 0;
+    p800::SeqPlayer player;
+    std::array<p800::SeqEvent, p800::SeqPlayer::maxEvents> seqEvents {};
+    std::atomic<bool> seqRun { false }, seqRecording { false };
+    std::atomic<int> seqPlayStep { -1 }, seqSelectedStep { 0 };
+    std::atomic<double> hostBpm { 0.0 };
+    int heldForStepRec = 0;             // audio thread: keys down while step recording
+
+    struct RecEvent { int type, step, note; };  // 0 add note at step, 1 advance selected step
+    juce::AbstractFifo recFifo { 256 };
+    std::array<RecEvent, 256> recBuffer {};
+    void pushRec (RecEvent e);
     void updatePerformance();
 
     p800::Engine engine;

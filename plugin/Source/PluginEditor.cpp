@@ -68,6 +68,16 @@ void P800Editor::refreshState()
     s.programName = s.presetName;
     s.presetFavourite = pm.isFavourite (pm.getCurrentKey());
     s.presetIsUser = pm.currentIsUser() && pm.getCurrentBank().isUser();
+
+    // Sequencer (the view settings - visible, lane, octave - live in the editor's state).
+    s.seq.playing = processor.getSeqRun();
+    s.seq.recording = processor.getSeqRecording();
+    s.seq.playStep = processor.getSeqPlayStep();
+    s.seq.selectedStep = processor.getSeqSelectedStep();
+    s.seq.hostBpm = processor.getHostBpm();
+    const int seqVersion = processor.getSeqVersion();
+    const bool seqChanged = seqVersion != lastSeqVersion;
+    if (seqChanged) { s.seq.data = processor.getSeqData(); lastSeqVersion = seqVersion; }
     s.volume = getReal ("master");
     s.tune = getReal ("tune");
     s.joyX = getReal ("joyX");
@@ -92,7 +102,10 @@ void P800Editor::refreshState()
                       || s.chordMode != state.chordMode || s.chordNotes != state.chordNotes
                       || s.chorusType != state.chorusType || s.chorusSpeed != state.chorusSpeed
                       || s.bankName != state.bankName || s.presetName != state.presetName
-                      || s.presetFavourite != state.presetFavourite || s.presetIsUser != state.presetIsUser;
+                      || s.presetFavourite != state.presetFavourite || s.presetIsUser != state.presetIsUser
+                      || seqChanged || s.seq.playing != state.seq.playing || s.seq.recording != state.seq.recording
+                      || s.seq.playStep != state.seq.playStep || s.seq.selectedStep != state.seq.selectedStep
+                      || juce::roundToInt (s.seq.hostBpm) != juce::roundToInt (state.seq.hostBpm);
     state = s;
     if (changed)
         repaint();
@@ -180,7 +193,8 @@ void P800Editor::setFromDrag (HitKind kind, juce::Point<float> d)
 void P800Editor::mouseDown (const juce::MouseEvent& e)
 {
     const auto d = toDesign (e.position);
-    dragHit = view.hitTest (d);
+    dragHit = view.hitTest (d, state);
+    if (seqMouseDown (dragHit, e, d)) { refreshState(); repaint(); return; }
 
     switch (dragHit.kind)
     {
@@ -249,7 +263,7 @@ void P800Editor::mouseDown (const juce::MouseEvent& e)
             pm.toggleFavourite (pm.getCurrentKey());
             break;
         }
-        case HitKind::none: break;
+        default: break; // sequencer clicks are handled in seqMouseDown
     }
     refreshState();
 }
@@ -261,6 +275,9 @@ void P800Editor::mouseDrag (const juce::MouseEvent& e)
         case HitKind::joystick: case HitKind::volume: case HitKind::tune: case HitKind::cell:
         case HitKind::chorusSpeed:
             setFromDrag (dragHit.kind, toDesign (e.position));
+            break;
+        case HitKind::seqGrid: case HitKind::seqLane: case HitKind::seqSwing: case HitKind::seqGate: case HitKind::seqBpm:
+            seqMouseDrag (toDesign (e.position));
             break;
         default: break;
     }
@@ -281,6 +298,7 @@ void P800Editor::mouseUp (const juce::MouseEvent&)
         case HitKind::tune:   param ("tune")->endChangeGesture(); break;
         case HitKind::chorusSpeed: param ("chorusSpeed")->endChangeGesture(); break;
         case HitKind::cell:   chartParam (dragHit.index)->endChangeGesture(); break;
+        case HitKind::seqGrid: seqMouseUp(); break;
         default: break;
     }
     dragHit = {};
@@ -289,8 +307,14 @@ void P800Editor::mouseUp (const juce::MouseEvent&)
 
 void P800Editor::mouseWheelMove (const juce::MouseEvent& e, const juce::MouseWheelDetails& w)
 {
-    const auto hit = view.hitTest (toDesign (e.position));
-    if (hit.kind != HitKind::cell || w.deltaY == 0.0f)
+    const auto hit = view.hitTest (toDesign (e.position), state);
+    if (w.deltaY == 0.0f) return;
+    if (hit.kind == HitKind::seqSwing || hit.kind == HitKind::seqGate || hit.kind == HitKind::seqBpm)
+    {
+        seqWheel (hit, w.deltaY * (w.isReversed ? -1.0f : 1.0f) > 0 ? 1 : -1);
+        return;
+    }
+    if (hit.kind != HitKind::cell)
         return;
     dragAccum += w.deltaY * (w.isReversed ? -1.0f : 1.0f) * 8.0f;
     const int steps = (int) dragAccum;
@@ -508,4 +532,267 @@ void P800Editor::openPresetFile()
                               const auto f = fc.getResult();
                               if (safe != nullptr && f.existsAsFile()) { safe->processor.getPresetManager().loadFile (f); safe->refreshState(); }
                           });
+}
+
+// ---- sequencer screen ---------------------------------------------------------------------
+
+bool P800Editor::seqMouseDown (const p800::Hit& hit, const juce::MouseEvent& e, juce::Point<float> d)
+{
+    using p800::SeqData;
+    auto& q = state.seq;
+    switch (hit.kind)
+    {
+        case HitKind::seqToggle: q.visible = ! q.visible; return true;
+        case HitKind::seqPlay:   processor.setSeqRun (! processor.getSeqRun()); return true;
+        case HitKind::seqLength:
+        {
+            const int len = hit.index == 1 ? 32 : 16;
+            processor.editSeq ([len] (SeqData& s)
+            {
+                auto& p = s.pat();
+                // Going to 32 with an empty second half: start it as a copy of the first.
+                if (len == 32 && p.length == 16)
+                {
+                    bool emptyTail = true;
+                    for (int i = 16; i < 32; ++i) emptyTail = emptyTail && p.steps[(size_t) i].empty();
+                    if (emptyTail) for (int i = 0; i < 16; ++i) p.steps[(size_t) (i + 16)] = p.steps[(size_t) i];
+                }
+                p.length = len;
+            });
+            return true;
+        }
+        case HitKind::seqPattern:
+        {
+            const int idx = hit.index;
+            processor.editSeq ([idx] (SeqData& s) { s.current = idx; });
+            return true;
+        }
+        case HitKind::seqRate: showRateMenu(); return true;
+        case HitKind::seqSwing: case HitKind::seqGate: case HitKind::seqBpm:
+        {
+            const auto& st = q.data.settings;
+            seqDragValue = hit.kind == HitKind::seqSwing ? st.swing : hit.kind == HitKind::seqGate ? st.gate : st.bpm;
+            dragStartY = d.y;
+            if (hit.kind == HitKind::seqBpm && st.hostSync) return true; // the host sets the tempo
+            return true;
+        }
+        case HitKind::seqSync:
+        {
+            const bool host = hit.index == 0;
+            processor.editSeq ([host] (SeqData& s) { s.settings.hostSync = host; });
+            return true;
+        }
+        case HitKind::seqOctUp:   q.lowNote = juce::jmin (96, q.lowNote + 12); return true;
+        case HitKind::seqOctDown: q.lowNote = juce::jmax (0, q.lowNote - 12); return true;
+        case HitKind::seqRec:     processor.setSeqRecording (! processor.getSeqRecording()); return true;
+        case HitKind::seqCopy:
+            if (! q.pasteArmed) { clipboard = q.data.pat(); q.pasteArmed = true; }
+            else
+            {
+                const auto clip = clipboard;
+                processor.editSeq ([clip] (SeqData& s) { s.pat() = clip; });
+                q.pasteArmed = false;
+            }
+            return true;
+        case HitKind::seqClear: askClearPattern(); return true;
+        case HitKind::seqStepNumber: processor.setSeqSelectedStep (hit.index); return true;
+        case HitKind::seqLaneTab: q.lane = hit.index; return true;
+        case HitKind::seqLockParam: showLockParamMenu(); return true;
+        case HitKind::seqLane:
+            setLaneValue (hit.index, d.y, e.mods.isPopupMenu() || e.getNumberOfClicks() > 1);
+            return true;
+        case HitKind::seqGrid:
+        {
+            const int step = hit.index, note = hit.note;
+            processor.setSeqSelectedStep (step);
+            int start = -1;
+            const int idx = q.data.findNote (step, note, start);
+            seqDragMoved = false;
+            if (idx >= 0)
+            {
+                seqDragStart = start; seqDragIndex = idx; seqDragNew = false;
+            }
+            else
+            {
+                if (q.data.pat().steps[(size_t) step].noteCount() >= p800::kSeqMaxNotes)
+                {
+                    seqDragIndex = -1; // step is full (8 voices)
+                    return true;
+                }
+                processor.editSeq ([step, note] (SeqData& s) { s.addNote (step, note); });
+                state.seq.data = processor.getSeqData();
+                lastSeqVersion = processor.getSeqVersion();
+                seqDragStart = step;
+                seqDragIndex = state.seq.data.findNote (step, note, start);
+                seqDragNew = true;
+            }
+            return true;
+        }
+        default: return false;
+    }
+}
+
+void P800Editor::seqMouseDrag (juce::Point<float> d)
+{
+    using p800::SeqData;
+    const auto& q = state.seq;
+    switch (dragHit.kind)
+    {
+        case HitKind::seqGrid:
+        {
+            if (seqDragIndex < 0) return;
+            const auto grid = p800::PanelView::seqGridArea();
+            const int length = q.data.pat().length;
+            const int step = juce::jlimit (0, length - 1, (int) ((d.x - grid.getX()) / (grid.getWidth() / (float) length)));
+            const int newLen = juce::jmax (1, step - seqDragStart + 1);
+            const int start = seqDragStart, idx = seqDragIndex;
+            if (newLen != (int) q.data.pat().steps[(size_t) start].notes[(size_t) idx].length)
+            {
+                seqDragMoved = true;
+                processor.editSeq ([start, idx, newLen] (SeqData& s) { s.setNoteLength (start, idx, newLen); });
+            }
+            break;
+        }
+        case HitKind::seqLane:
+        {
+            const auto lane = p800::PanelView::seqLaneValues();
+            const int length = q.data.pat().length;
+            const int step = juce::jlimit (0, length - 1, (int) ((d.x - lane.getX()) / (lane.getWidth() / (float) length)));
+            setLaneValue (step, d.y, false);
+            break;
+        }
+        case HitKind::seqSwing: case HitKind::seqGate: case HitKind::seqBpm:
+        {
+            const int delta = juce::roundToInt ((dragStartY - d.y) / 3.0f);
+            const auto kind = dragHit.kind;
+            const int v0 = seqDragValue;
+            processor.editSeq ([kind, v0, delta] (SeqData& s)
+            {
+                if (kind == HitKind::seqSwing)      s.settings.swing = juce::jlimit (50, 75, v0 + delta);
+                else if (kind == HitKind::seqGate)  s.settings.gate = juce::jlimit (5, 100, v0 + delta);
+                else if (! s.settings.hostSync)     s.settings.bpm = juce::jlimit (30, 300, v0 + delta);
+            });
+            break;
+        }
+        default: break;
+    }
+    refreshState();
+}
+
+void P800Editor::seqMouseUp()
+{
+    // A click (no drag) on an existing note removes it.
+    if (dragHit.kind == HitKind::seqGrid && seqDragIndex >= 0 && ! seqDragNew && ! seqDragMoved)
+    {
+        const int start = seqDragStart, idx = seqDragIndex;
+        processor.editSeq ([start, idx] (p800::SeqData& s) { s.removeNote (start, idx); });
+    }
+    seqDragIndex = -1;
+}
+
+void P800Editor::seqWheel (const p800::Hit& hit, int delta)
+{
+    const auto kind = hit.kind;
+    processor.editSeq ([kind, delta] (p800::SeqData& s)
+    {
+        if (kind == HitKind::seqSwing)      s.settings.swing = juce::jlimit (50, 75, s.settings.swing + delta);
+        else if (kind == HitKind::seqGate)  s.settings.gate = juce::jlimit (5, 100, s.settings.gate + delta);
+        else if (! s.settings.hostSync)     s.settings.bpm = juce::jlimit (30, 300, s.settings.bpm + delta);
+    });
+    refreshState();
+}
+
+void P800Editor::setLaneValue (int step, float y, bool reset)
+{
+    const auto lane = p800::PanelView::seqLaneValues();
+    const float f = juce::jlimit (0.0f, 1.0f, (lane.getBottom() - y) / lane.getHeight());
+    const int which = state.seq.lane, param = state.seq.lockParam;
+    processor.editSeq ([=] (p800::SeqData& s)
+    {
+        auto& st = s.pat().steps[(size_t) step];
+        if (which == 0)      st.probability = (uint8_t) (reset ? 100 : juce::jlimit (0, 100, juce::roundToInt (f * 100.0f)));
+        else if (which == 1) st.gate = (uint8_t) (reset ? 100 : juce::jlimit (1, 100, juce::roundToInt (f * 100.0f)));
+        else if (reset)      s.clearLock (step, param);
+        else
+        {
+            const auto& spec = p800::params[param];
+            s.setLock (step, param, spec.minValue + juce::roundToInt (f * (float) (spec.maxValue - spec.minValue)));
+        }
+    });
+    refreshState();
+}
+
+void P800Editor::showRateMenu()
+{
+    juce::PopupMenu menu;
+    menu.addSectionHeader ("Step length");
+    for (int i = 0; i < p800::numSeqRates; ++i)
+        menu.addItem (i + 1, p800::seqRates[i].name, true, state.seq.data.settings.rate == i);
+    juce::Component::SafePointer<P800Editor> safe (this);
+    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (this).withTargetScreenArea (screenAreaFor (view.seqRateArea())),
+        [safe] (int r)
+        {
+            if (safe == nullptr || r <= 0) return;
+            safe->processor.editSeq ([r] (p800::SeqData& s) { s.settings.rate = r - 1; });
+            safe->refreshState();
+        });
+}
+
+void P800Editor::showLockParamMenu()
+{
+    const auto& d = state.seq.data;
+    juce::PopupMenu menu;
+    menu.addSectionHeader ("Parameter to lock (" + juce::String (juce::CharPointer_UTF8 ("\xe2\x97\x8f")) + " = has locks)");
+    const char* groups[][2] = { { "DCO 1", "1" }, { "DCO 2", "2" }, { "Noise", "33" }, { "VCF / Chorus", "4" },
+                                { "DEG 1", "5" }, { "DEG 2", "6" }, { "DEG 3", "7" }, { "MG", "8" } };
+    for (auto& grp : groups)
+    {
+        juce::PopupMenu sub;
+        for (int i = 0; i < p800::numParams; ++i)
+        {
+            const auto num = juce::String (p800::params[i].number);
+            const juce::String prefix (grp[1]);
+            const bool inGroup = prefix == "33" ? num == "33"
+                               : prefix == "2" ? (num.startsWith ("2") || num == "31" || num == "32")
+                               : (num.startsWith (prefix) && num != "31" && num != "32" && num != "33");
+            if (! inGroup) continue;
+            juce::String label = num + "  " + p800::params[i].name;
+            if (d.patternHasLocksFor (i)) label << "  " << juce::String (juce::CharPointer_UTF8 ("\xe2\x97\x8f"));
+            sub.addItem (i + 1, label, true, i == state.seq.lockParam);
+        }
+        menu.addSubMenu (grp[0], sub);
+    }
+    menu.addSeparator();
+    menu.addItem (1000, "Clear locks for " + juce::String (p800::params[state.seq.lockParam].name) + " in this pattern",
+                  d.patternHasLocksFor (state.seq.lockParam));
+    juce::Component::SafePointer<P800Editor> safe (this);
+    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (this).withTargetScreenArea (screenAreaFor (view.seqLockParamArea())),
+        [safe] (int r)
+        {
+            if (safe == nullptr || r <= 0) return;
+            if (r == 1000)
+            {
+                const int param = safe->state.seq.lockParam;
+                safe->processor.editSeq ([param] (p800::SeqData& s) { s.clearLocksFor (param); });
+            }
+            else safe->state.seq.lockParam = r - 1;
+            safe->refreshState();
+            safe->repaint();
+        });
+}
+
+void P800Editor::askClearPattern()
+{
+    const auto name = juce::String::charToString ((juce::juce_wchar) ('A' + state.seq.data.current));
+    juce::Component::SafePointer<P800Editor> safe (this);
+    juce::AlertWindow::showAsync (juce::MessageBoxOptions()
+                                      .withTitle ("Clear Pattern")
+                                      .withMessage ("Clear all notes and parameter locks in pattern " + name + "?")
+                                      .withButton ("Clear")
+                                      .withButton ("Cancel")
+                                      .withAssociatedComponent (this),
+                                  [safe] (int r)
+                                  {
+                                      if (r == 1 && safe != nullptr) { safe->processor.editSeq ([] (p800::SeqData& s) { s.clearPattern(); }); safe->refreshState(); }
+                                  });
 }

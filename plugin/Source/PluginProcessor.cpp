@@ -26,6 +26,7 @@ P800Processor::P800Processor()
     chorusSpeedParam = apvts.getRawParameterValue ("chorusSpeed");
     presets = std::make_unique<p800::PresetManager> (*this);
     setCurrentProgram (0);
+    startTimerHz (30);
 }
 
 juce::AudioProcessorValueTreeState::ParameterLayout P800Processor::createLayout()
@@ -71,6 +72,8 @@ juce::AudioProcessorValueTreeState::ParameterLayout P800Processor::createLayout(
 void P800Processor::prepareToPlay (double sampleRate, int samplesPerBlock)
 {
     engine.prepare (sampleRate, samplesPerBlock);
+    player.prepare (sampleRate);
+    playerVersion = 0;
     scratch.assign ((size_t) juce::jmax (1, samplesPerBlock), 0.0f);
     engine.setParams (currentCoreParams());
 }
@@ -98,11 +101,12 @@ void P800Processor::updatePerformance()
     engine.setPerformance (x * range, dco, vcf);
 }
 
-Poly800Params P800Processor::currentCoreParams() const
+Poly800Params P800Processor::currentCoreParams (const int16_t* locks) const
 {
     int values[p800::numParams];
     for (int i = 0; i < p800::numParams; ++i)
-        values[i] = juce::roundToInt (paramValues[(size_t) i]->load());
+        values[i] = locks != nullptr && locks[i] >= 0 ? (int) locks[i]   // sequencer parameter lock
+                                                       : juce::roundToInt (paramValues[(size_t) i]->load());
 
     Poly800Params p;
     poly800_params_default (&p);
@@ -133,6 +137,25 @@ void P800Processor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBu
     keys.setVoiceLimit (coreParams.dco_mode == 2 ? 4 : 8);
     keys.update (sink);
 
+    // Sequencer: pick up edits, read the host transport, schedule this block's steps.
+    if (const int v = seqVersion.load(); v != playerVersion)
+    {
+        const juce::ScopedTryLock tl (seqLock);
+        if (tl.isLocked()) { player.setData (seqModel); playerVersion = v; }
+    }
+    p800::SeqTransport transport;
+    if (auto* ph = getPlayHead())
+        if (const auto info = ph->getPosition())
+        {
+            transport.hasHost = info->getPpqPosition().hasValue();
+            transport.hostPlaying = info->getIsPlaying();
+            transport.ppq = info->getPpqPosition().orFallback (0.0);
+            transport.bpm = info->getBpm().orFallback (120.0);
+            hostBpm.store (info->getBpm().orFallback (0.0));
+        }
+    const int numSeqEvents = player.process (numSamples, transport, seqRun.load(), seqEvents.data());
+    int seqIndex = 0;
+
     float* left = buffer.getWritePointer (0);
     float* right = nullptr;
     if (buffer.getNumChannels() > 1)
@@ -152,14 +175,53 @@ void P800Processor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBu
         pos = end;
     };
 
+    // Sequencer events up to (and including) 'until': notes go straight to the engine,
+    // step changes apply that step's parameter locks.
+    auto runSeqUntil = [&] (int until)
+    {
+        while (seqIndex < numSeqEvents && seqEvents[(size_t) seqIndex].offset <= until)
+        {
+            const auto& e = seqEvents[(size_t) seqIndex++];
+            renderTo (juce::jlimit (pos, numSamples, e.offset));
+            if (e.type == p800::SeqEvent::noteOn)       engine.noteOn (e.note, e.velocity);
+            else if (e.type == p800::SeqEvent::noteOff) engine.noteOff (e.note);
+            else                                        engine.setParams (currentCoreParams (player.activeLocks()));
+        }
+    };
+
+    const bool recording = seqRecording.load();
     for (const auto meta : midi)
     {
+        runSeqUntil (meta.samplePosition);
         renderTo (juce::jlimit (pos, numSamples, meta.samplePosition));
         const auto msg = meta.getMessage();
         if (msg.isNoteOn())
+        {
             keys.noteOn (sink, msg.getNoteNumber(), msg.getVelocity());
+            if (recording)
+            {
+                if (player.isRunning())
+                {
+                    // Live: quantise to the nearest step.
+                    const double p = player.position();
+                    const int len = player.getData().pat().length;
+                    const int step = (int) std::llround (p) % len;
+                    pushRec ({ 0, step, msg.getNoteNumber() });
+                }
+                else
+                {
+                    // Step record: notes held together go on the selected step.
+                    ++heldForStepRec;
+                    pushRec ({ 0, seqSelectedStep.load(), msg.getNoteNumber() });
+                }
+            }
+        }
         else if (msg.isNoteOff())
+        {
             keys.noteOff (sink, msg.getNoteNumber());
+            if (recording && ! player.isRunning() && heldForStepRec > 0 && --heldForStepRec == 0)
+                pushRec ({ 1, 0, 0 }); // all keys up: move to the next step
+        }
         else if (msg.isAllNotesOff() || msg.isAllSoundOff())
             keys.allNotesOff (sink);
         else if (msg.isSustainPedalOn() || msg.isSustainPedalOff())
@@ -180,7 +242,9 @@ void P800Processor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBu
             updatePerformance();
         }
     }
+    runSeqUntil (numSamples);
     renderTo (numSamples);
+    seqPlayStep.store (player.currentStep());
 
     for (int ch = 2; ch < buffer.getNumChannels(); ++ch)
         buffer.clear (ch, 0, numSamples);
@@ -239,6 +303,7 @@ juce::ValueTree P800Processor::captureSound()
     for (int i = 0; i < n; ++i) chord.add (juce::String (iv[i]));
     t.setProperty ("chordMemory", chord.joinIntoString (","), nullptr);
     t.setProperty ("chordRoot", root, nullptr);
+    t.setProperty ("seq", juce::String (getSeqData().serialise()), nullptr); // patterns travel with the preset
     return t;
 }
 
@@ -254,6 +319,59 @@ void P800Processor::restoreSound (const juce::ValueTree& t)
             iv[count++] = juce::jlimit (0, 48, c.getIntValue());
     if (count > 0)
         keys.setChord (iv, count, (int) t.getProperty ("chordRoot", 60));
+    // Presets saved with a sequence bring it back; others (factory, older) keep the current one.
+    if (t.hasProperty ("seq"))
+    {
+        const auto text = t.getProperty ("seq").toString().toStdString();
+        editSeq ([&text] (p800::SeqData& d) { d.deserialise (text); });
+    }
+}
+
+p800::SeqData P800Processor::getSeqData() const
+{
+    const juce::ScopedLock sl (seqLock);
+    return seqModel;
+}
+
+void P800Processor::editSeq (const std::function<void (p800::SeqData&)>& change)
+{
+    {
+        const juce::ScopedLock sl (seqLock);
+        change (seqModel);
+    }
+    seqVersion.fetch_add (1);
+}
+
+void P800Processor::pushRec (RecEvent e)
+{
+    int s1, n1, s2, n2;
+    recFifo.prepareToWrite (1, s1, n1, s2, n2);
+    if (n1 > 0) recBuffer[(size_t) s1] = e;
+    else if (n2 > 0) recBuffer[(size_t) s2] = e;
+    recFifo.finishedWrite (n1 + n2);
+}
+
+void P800Processor::timerCallback()
+{
+    int s1, n1, s2, n2;
+    recFifo.prepareToRead (recFifo.getNumReady(), s1, n1, s2, n2);
+    if (n1 + n2 == 0) return;
+    std::vector<RecEvent> events;
+    for (int i = 0; i < n1; ++i) events.push_back (recBuffer[(size_t) (s1 + i)]);
+    for (int i = 0; i < n2; ++i) events.push_back (recBuffer[(size_t) (s2 + i)]);
+    recFifo.finishedRead (n1 + n2);
+
+    editSeq ([this, &events] (p800::SeqData& d)
+    {
+        for (const auto& e : events)
+        {
+            const int len = d.pat().length;
+            if (e.type == 0)
+                d.addNote (juce::jlimit (0, len - 1, e.step), e.note);
+            else
+                seqSelectedStep.store ((seqSelectedStep.load() + 1) % len);
+        }
+    });
 }
 
 int P800Processor::numFactory() const { return factory::numPrograms; }
@@ -288,6 +406,7 @@ void P800Processor::getStateInformation (juce::MemoryBlock& dest)
     state.setProperty ("chordMemory", chord.joinIntoString (","), nullptr);
     state.setProperty ("chordRoot", root, nullptr);
     state.setProperty ("presetKey", presets->getCurrentKey(), nullptr);
+    state.setProperty ("seq", juce::String (getSeqData().serialise()), nullptr);
     if (auto xml = state.createXml())
         copyXmlToBinary (*xml, dest);
 }
@@ -306,6 +425,11 @@ void P800Processor::setStateInformation (const void* data, int size)
                     iv[count++] = juce::jlimit (0, 48, t.getIntValue());
             if (count > 0)
                 keys.setChord (iv, count, (int) state.getProperty ("chordRoot", 60));
+            if (state.hasProperty ("seq"))
+            {
+                const auto text = state.getProperty ("seq").toString().toStdString();
+                editSeq ([&text] (p800::SeqData& d) { d.deserialise (text); });
+            }
             apvts.replaceState (state);
             presets->setCurrentKey (state.getProperty ("presetKey", "F:" + juce::String (currentProgram)).toString());
         }
