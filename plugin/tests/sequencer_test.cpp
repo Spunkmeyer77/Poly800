@@ -3,6 +3,7 @@
 // and in host sync (including loop jumps), swing, gate, polyphonic chords,
 // 32-step wrap, probability, parameter locks and the save format.
 #include "Sequencer.h"
+#include "KeyLayer.h"
 #include <cstdio>
 #include <vector>
 
@@ -195,6 +196,39 @@ int main()
         check (e.patterns[7].steps[3].notes[0].note == 40, "every pattern is saved");
         SeqData f;
         check (! f.deserialise ("garbage") && ! f.deserialise (""), "rejects text that is not a sequence");
+    }
+
+    { // recording takes what the key assign layer plays (as the processor does since 0.5.1)
+        struct RecordingSink : KeyLayer::Sink
+        {
+            SeqData* d; int* selected;
+            void keyOn (int note, int) override { d->addNote (*selected, note); }
+            void keyOff (int) override {}
+        };
+        SeqData d;
+        int selected = 0;
+        RecordingSink sink; sink.d = &d; sink.selected = &selected;
+        KeyLayer keys;
+        const int minor7[] = { 0, 3, 7, 10 };
+        keys.setChord (minor7, 4, 48);
+        keys.setMode (KeyLayer::chordMode);
+        keys.update (sink);
+        keys.noteOn (sink, 50, 100); keys.noteOff (sink, 50);   // one key in CHORD mode
+        selected = 1;
+        keys.noteOn (sink, 55, 100); keys.noteOff (sink, 55);
+        const auto& s0 = d.pat().steps[0];
+        const auto& s1 = d.pat().steps[1];
+        auto has = [] (const SeqStep& st, int n) { for (auto& x : st.notes) if (x.note == n) return true; return false; };
+        check (s0.noteCount() == 4 && has (s0, 50) && has (s0, 53) && has (s0, 57) && has (s0, 60),
+               "CHORD mode: one key records the whole chord (D: 50 53 57 60)");
+        check (s1.noteCount() == 4 && has (s1, 55) && has (s1, 65), "next key records the chord on its root");
+
+        SeqData h; int sel = 0;
+        RecordingSink hs; hs.d = &h; hs.selected = &sel;
+        KeyLayer k2; k2.setHold (true); k2.update (hs);
+        k2.noteOn (hs, 60, 100); k2.noteOff (hs, 60);
+        k2.noteOn (hs, 64, 100); k2.noteOff (hs, 64);
+        check (h.pat().steps[0].noteCount() == 2, "HOLD: notes played one by one record together");
     }
 
     std::printf (fails ? "\n%d failure(s)\n" : "\nall sequencer checks pass\n", fails);

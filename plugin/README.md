@@ -3,7 +3,7 @@
 AU / VST3 instrument by Ticco Ross, built on the ISLA Poly-800 synthesis core
 (`../src`). GPL-3.0-or-later, like the core.
 
-## Status: 0.5.0
+## Status: 0.5.1
 
 ![P-800 panel](docs/panel.png)
 
@@ -39,7 +39,10 @@ AU / VST3 instrument by Ticco Ross, built on the ISLA Poly-800 synthesis core
   (8 notes per step), rate/swing/gate, host sync or internal BPM, per-step
   probability and gate, parameter locks on any chart parameter (several per
   step), keyboard recording (step and live), copy/paste/clear. Patterns are
-  saved in presets and with the session.
+  saved in presets and with the session. Recording takes the key assign
+  layer's output, so CHORD mode records whole chords (0.5.1). Parameter locks
+  are re-applied at every audio block for the whole step (0.5.1; in 0.5.0 they
+  lasted one block).
 - Buttons: backlit-rubber style throughout.
 
 ## Core additions

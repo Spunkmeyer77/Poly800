@@ -285,7 +285,8 @@ def build():
         "Clicking a step (or its number) selects it, outlined in the numbers row.",
         "<b>Recording</b>: with REC on and the sequencer stopped, play a note or chord: it goes on the selected step, and "
         "when you let go of all keys the selection moves to the next step. While playing, notes you play are added to "
-        "the nearest step.",
+        "the nearest step. The sequencer records what the key assign plays: in CHORD mode one key records the whole "
+        "stored chord, and with HOLD on you can build a chord note by note.",
     ])
     s += [Paragraph("Lanes: probability, gate and parameter locks", h2)]
     s += bullets([

@@ -12,7 +12,7 @@
 
 using namespace p800;
 
-static std::vector<float> render (const SeqData& d, int steps)
+static std::vector<float> render (const SeqData& d, int steps, bool buggyBlockReset = false)
 {
     const double sr = 48000.0;
     const int block = 256;
@@ -25,6 +25,7 @@ static std::vector<float> render (const SeqData& d, int steps)
     // A plain bright patch with an instant release, so silence really is silence.
     int base[numParams];
     for (int i = 0; i < numParams; ++i) base[i] = factory::programs[0].values[i];
+    base[18] = 15; // panel cutoff dark, so an unlocked step is clearly darker than a locked one
     auto paramsWith = [&] (const int16_t* locks)
     {
         int v[numParams];
@@ -48,6 +49,9 @@ static std::vector<float> render (const SeqData& d, int steps)
     for (int s = 0; s < total; s += block)
     {
         const int n = std::min (block, total - s);
+        // Like the processor: parameters are pushed at the start of every block. They must
+        // include the locks of the step that is still playing (0.5.0 pushed the panel values).
+        engine.setParams (paramsWith (buggyBlockReset ? nullptr : player.activeLocks()));
         const int c = player.process (n, t, true, ev);
         int pos = 0;
         for (int i = 0; i <= c; ++i)
@@ -98,8 +102,14 @@ int main()
         d.setLock (0, 18 /* P41 */, 15);
         const auto x = render (d, 8);
         const double dark = brightness (x, 1500, 5000), open = brightness (x, 24000 + 1500, 24000 + 5000);
-        std::printf ("     brightness step 1 (cutoff 15) %.4f, step 5 (cutoff 99) %.4f\n", dark, open);
+        const double openLate = brightness (x, 24000 + 4500, 24000 + 5900);
+        std::printf ("     brightness step 1 (cutoff 15) %.4f, step 5 (cutoff 99) %.4f, end of step 5 %.4f\n", dark, open, openLate);
         check (open > dark * 2.0, "a cutoff lock opens the filter on its step only");
+        check (openLate > dark * 2.0, "the lock holds for the whole step, across audio blocks");
+        const auto bug = render (d, 8, true);
+        const double bugLate = brightness (bug, 24000 + 4500, 24000 + 5900);
+        std::printf ("     with the 0.5.0 per-block reset, end of step 5 %.4f (the bug)\n", bugLate);
+        check (bugLate < openLate * 0.6, "the test does catch the 0.5.0 bug");
     }
 
     std::printf (fails ? "\n%d failure(s)\n" : "\nall sequencer + engine checks pass\n", fails);

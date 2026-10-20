@@ -45,7 +45,7 @@ struct PanelState
     juce::String chordNotes { "C3 Eb3 G3" };
     int chorusType = 0;                     // effect: 0 Chorus, 1 Phaser, 2 Ensemble
     float chorusSpeed = 0.4f;               // 0..1
-    juce::String version { "0.5.0" };       // set from JucePlugin_VersionString by the editor
+    juce::String version { "0.5.1" };       // set from JucePlugin_VersionString by the editor
     // Presets
     juce::String bankName { "Factory" };
     juce::String presetName { "11 Strings" };

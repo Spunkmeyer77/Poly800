@@ -128,7 +128,9 @@ void P800Processor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBu
 
     engine.setEffect (juce::roundToInt (chorusTypeParam->load()), chorusSpeedParam->load());
     const auto coreParams = currentCoreParams();
-    engine.setParams (coreParams);
+    // Keep the playing step's parameter locks for the whole step: they are re-applied at the
+    // start of every block, not only when the step begins (in 0.5.0 they lasted one block).
+    engine.setParams (currentCoreParams (player.activeLocks()));
     updatePerformance();
 
     // Key assign. DOUBLE mode (P18 = 2) has 4 voices, WHOLE has 8.
@@ -197,24 +199,9 @@ void P800Processor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBu
         const auto msg = meta.getMessage();
         if (msg.isNoteOn())
         {
-            keys.noteOn (sink, msg.getNoteNumber(), msg.getVelocity());
-            if (recording)
-            {
-                if (player.isRunning())
-                {
-                    // Live: quantise to the nearest step.
-                    const double p = player.position();
-                    const int len = player.getData().pat().length;
-                    const int step = (int) std::llround (p) % len;
-                    pushRec ({ 0, step, msg.getNoteNumber() });
-                }
-                else
-                {
-                    // Step record: notes held together go on the selected step.
-                    ++heldForStepRec;
-                    pushRec ({ 0, seqSelectedStep.load(), msg.getNoteNumber() });
-                }
-            }
+            keys.noteOn (sink, msg.getNoteNumber(), msg.getVelocity()); // records what it plays (see EngineSink)
+            if (recording && ! player.isRunning())
+                ++heldForStepRec; // step record: count the keys held, to know when to move on
         }
         else if (msg.isNoteOff())
         {
@@ -340,6 +327,22 @@ void P800Processor::editSeq (const std::function<void (p800::SeqData&)>& change)
         change (seqModel);
     }
     seqVersion.fetch_add (1);
+}
+
+void P800Processor::recordPlayedNote (int note)
+{
+    if (! seqRecording.load()) return;
+    if (player.isRunning())
+    {
+        // Live: quantise to the nearest step.
+        const int len = player.getData().pat().length;
+        pushRec ({ 0, (int) (std::llround (player.position()) % len), note });
+    }
+    else
+    {
+        // Step record: everything sounding together goes on the selected step.
+        pushRec ({ 0, seqSelectedStep.load(), note });
+    }
 }
 
 void P800Processor::pushRec (RecEvent e)

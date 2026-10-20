@@ -110,15 +110,19 @@ private:
     std::atomic<float>* chorusSpeedParam = nullptr;
     bool sustainPedal = false;
 
+    // What the key assign layer plays (POLY, CHORD, HOLD) goes to the engine and, with REC on,
+    // into the sequencer, so a chord played in CHORD mode is recorded as the whole chord.
     struct EngineSink : p800::KeyLayer::Sink
     {
-        explicit EngineSink (p800::Engine& e) : engine (e) {}
-        void keyOn (int note, int velocity) override { engine.noteOn (note, velocity); }
+        EngineSink (p800::Engine& e, P800Processor& o) : engine (e), owner (o) {}
+        void keyOn (int note, int velocity) override { engine.noteOn (note, velocity); owner.recordPlayedNote (note); }
         void keyOff (int note) override { engine.noteOff (note); }
         p800::Engine& engine;
+        P800Processor& owner;
     };
+    void recordPlayedNote (int note);   // audio thread
     p800::KeyLayer keys;
-    EngineSink sink { engine };
+    EngineSink sink { engine, *this };
     float midiBend = 0.0f;    // pitch wheel, -1..1
     float midiModWheel = 0.0f; // CC1, 0..1
     int currentProgram = 0;
