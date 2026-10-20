@@ -24,6 +24,7 @@ P800Processor::P800Processor()
     keyModeParam = apvts.getRawParameterValue ("keyMode");
     chorusTypeParam = apvts.getRawParameterValue ("chorusType");
     chorusSpeedParam = apvts.getRawParameterValue ("chorusSpeed");
+    presets = std::make_unique<p800::PresetManager> (*this);
     setCurrentProgram (0);
 }
 
@@ -200,8 +201,66 @@ void P800Processor::setCurrentProgram (int index)
     currentProgram = index;
     const auto& prog = factory::programs[index];
     for (int i = 0; i < p800::numParams; ++i)
-        if (auto* param = apvts.getParameter (paramId (p800::params[i].number)))
-            param->setValueNotifyingHost (param->convertTo0to1 ((float) prog.values[i]));
+        setParamValue (paramId (p800::params[i].number), (float) prog.values[i]);
+    // The original programs are heard with the default effect (P48 says whether it is on).
+    setParamValue ("chorusType", 0.0f);
+    setParamValue ("chorusSpeed", 0.4f);
+    if (presets != nullptr)
+        presets->noteFactoryProgram (index);
+}
+
+void P800Processor::setParamValue (const juce::String& id, float value)
+{
+    if (auto* param = apvts.getParameter (id))
+        param->setValueNotifyingHost (param->convertTo0to1 (value));
+}
+
+const juce::StringArray& P800Processor::soundParamIds()
+{
+    static const juce::StringArray ids = []
+    {
+        juce::StringArray a;
+        for (const auto& s : p800::params) a.add (paramId (s.number));
+        a.addArray ({ "chorusType", "chorusSpeed", "bendRange", "keyMode" });
+        return a;
+    }();
+    return ids;
+}
+
+juce::ValueTree P800Processor::captureSound()
+{
+    juce::ValueTree t ("Sound");
+    for (const auto& id : soundParamIds())
+        if (auto* param = apvts.getParameter (id))
+            t.setProperty (id, param->convertFrom0to1 (param->getValue()), nullptr);
+    int iv[p800::KeyLayer::maxChord], root = 60;
+    const int n = keys.getChord (iv, root);
+    juce::StringArray chord;
+    for (int i = 0; i < n; ++i) chord.add (juce::String (iv[i]));
+    t.setProperty ("chordMemory", chord.joinIntoString (","), nullptr);
+    t.setProperty ("chordRoot", root, nullptr);
+    return t;
+}
+
+void P800Processor::restoreSound (const juce::ValueTree& t)
+{
+    for (const auto& id : soundParamIds())
+        if (t.hasProperty (id))
+            setParamValue (id, (float) t.getProperty (id));
+    const auto chord = juce::StringArray::fromTokens (t.getProperty ("chordMemory", "").toString(), ",", "");
+    int iv[p800::KeyLayer::maxChord], count = 0;
+    for (const auto& c : chord)
+        if (count < p800::KeyLayer::maxChord && c.trim().isNotEmpty())
+            iv[count++] = juce::jlimit (0, 48, c.getIntValue());
+    if (count > 0)
+        keys.setChord (iv, count, (int) t.getProperty ("chordRoot", 60));
+}
+
+int P800Processor::numFactory() const { return factory::numPrograms; }
+
+juce::String P800Processor::factoryName (int index) const
+{
+    return juce::isPositiveAndBelow (index, factory::numPrograms) ? juce::String (factory::programs[index].name) : juce::String();
 }
 
 void P800Processor::selectProgram (int index)
@@ -228,6 +287,7 @@ void P800Processor::getStateInformation (juce::MemoryBlock& dest)
     for (int i = 0; i < n; ++i) chord.add (juce::String (iv[i]));
     state.setProperty ("chordMemory", chord.joinIntoString (","), nullptr);
     state.setProperty ("chordRoot", root, nullptr);
+    state.setProperty ("presetKey", presets->getCurrentKey(), nullptr);
     if (auto xml = state.createXml())
         copyXmlToBinary (*xml, dest);
 }
@@ -247,6 +307,7 @@ void P800Processor::setStateInformation (const void* data, int size)
             if (count > 0)
                 keys.setChord (iv, count, (int) state.getProperty ("chordRoot", 60));
             apvts.replaceState (state);
+            presets->setCurrentKey (state.getProperty ("presetKey", "F:" + juce::String (currentProgram)).toString());
         }
 }
 

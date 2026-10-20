@@ -73,7 +73,7 @@ PARAMS = [
         ("32", "Detune", "0-3", "Detunes DCO 2 downward, up to about -20 cents."),
     ]),
     ("Noise", [
-        ("33", "Noise level", "0-15", "White noise into the filter, shaped by DEG 3."),
+        ("33", "Noise level", "0-15", "White noise into the filter, shaped by DEG 3. At 15 it is about as loud as one full voice."),
     ]),
     ("VCF (one filter shared by all voices)", [
         ("41", "Cutoff", "0-99", "Filter cutoff frequency."),
@@ -165,6 +165,9 @@ def build():
         ["Programmer", "LED display (program, parameter, value), keypad, PROG/PARA key, <b>DOWN</b> / <b>UP</b>."],
         ["Performance / Effects", "<b>VOICES</b> switch (8 voices WHOLE / 4 voices DOUBLE, same as P18), <b>EFFECT</b> on/off (P48), "
                                   "effect <b>TYPE</b> (Chorus, Phaser or Ensemble) and the <b>SPEED</b> slider (chorus or phaser rate, or ensemble intensity)."],
+        ["Presets", "<b>BANK</b> (click to choose a bank), the preset name (click for the bank's list), "
+                    "<b>&lt;</b> / <b>&gt;</b> to step through it, <b>SAVE</b>, <b>NEW BANK</b>, <b>DELETE</b> and the "
+                    "favourite <b>star</b> (section 4)."],
         ["Parameter chart", "Every sound parameter, laid out like the printed chart on the original. Each cell shows its name, "
                             "number, range and current value."],
     ], [32 * mm, W - 32 * mm]))
@@ -188,8 +191,7 @@ def build():
     ])
     s += [Paragraph("Saving your sounds", h2), Paragraph(
         "Your edits are stored with your Live set like any plug-in. To keep a sound for other projects, save it as a "
-        "preset in your host (in Live: the save button in the device title bar). Loading a factory program replaces "
-        "the current edits.", body)]
+        "P-800 preset (section 4, Presets and banks).", body)]
 
     # 4. Playing.
     s += [Paragraph("4. Playing", h1), Paragraph("Joystick and controllers", h2)]
@@ -200,6 +202,28 @@ def build():
         "Your keyboard's <b>pitch wheel</b> adds to joystick X, and its <b>mod wheel</b> (CC1) works like pushing the joystick up.",
         "Joystick X and Y are host parameters, so you can automate them.",
     ])
+    s += [Paragraph("Presets and banks", h2), Paragraph(
+        "Presets are organised in banks, like the programs of the original. The preset section is under the effect "
+        "speed slider:", body)]
+    s += bullets([
+        "<b>Factory</b> is the bank of the 64 original programs, 11 to 88. It is built in and cannot be changed.",
+        "<b>User</b> is the first bank for your own sounds. Make more with <b>NEW BANK</b>, one per project or style.",
+        "<b>Favourites</b> lists every preset you have starred, from any bank.",
+        "Click <b>BANK</b> to choose a bank (its first preset loads). Click the preset name for the full list of the "
+        "bank, or step through it with <b>&lt;</b> and <b>&gt;</b> (the &lt; PROG and PROG &gt; buttons do the same).",
+        "Presets in every bank are numbered like the hardware: 11-18, 21-28 up to 88. The PROGRAM NO. display shows "
+        "the number, and in PROG mode the keypad loads a preset by number from the bank shown.",
+        "<b>SAVE</b> stores the current sound: give it a name and choose the bank. Saving under an existing name asks "
+        "before replacing it. A preset stores all the sound parameters, the effect type and speed, the bend range, "
+        "the key assign mode and the chord memory (not volume, tune or the joystick).",
+        "<b>DELETE</b> removes the current preset (user banks only). The bank menu can delete a whole bank, open a "
+        "preset file from anywhere, or show the preset folder.",
+        "The <b>star</b> adds or removes the current preset from Favourites.",
+    ])
+    s += [Paragraph(
+        "Preset files (.p800preset) are kept in one folder per bank. macOS: <i>~/Library/Audio/Presets/Ticco Ross/P-800</i>. "
+        "Windows: <i>Documents\\Ticco Ross\\P-800\\Presets</i>. Linux: <i>~/.local/share/Ticco Ross/P-800/Presets</i>. "
+        "Copy a bank folder there to share it.", body)]
     s += [Paragraph("Chord memory", h2), Paragraph(
         "Like the original's chord memory, CHORD mode plays a whole stored chord from a single key. It works the same "
         "way as in Polytwelve:", body)]
@@ -275,6 +299,8 @@ def build():
         "chorus, phaser and ensemble from Polytwelve (Ticco Ross).",
         "Keyboard tracking (P43) adds to the cutoff instead of replacing it, so P41 Cutoff works at every tracking "
         "setting, as on the original instrument.",
+        "Noise (P33) is mixed at the oscillators' level; in the reconstruction it was about 19 dB too quiet to hear.",
+        "Preset banks, with the original programs as the Factory bank.",
         "Not included: the original's sequencer (P86-P88), and cassette or MIDI SysEx program transfer.",
     ])
     s += [Paragraph("Licence", h2), Paragraph(

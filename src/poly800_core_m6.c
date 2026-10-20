@@ -543,10 +543,17 @@ void poly800_core_render(
         const float env3 = env_tick(&core->deg3, &core->derived.deg3);
         float mixed = oscillator_bus * P800_OSC_BUS_GAIN;
 
+        /*
+         * P-800 fix: the noise joins the oscillators on the same mixer bus, so
+         * it takes the same bus gain. Without it P33 = 15 sat about 19 dB below
+         * a single voice and vanished under any note; now full noise is about
+         * as loud as one full-level voice.
+         */
         if (core->derived.noise_level > 0.0f) {
             mixed += white_noise(core)
                    * core->derived.noise_level
-                   * env3;
+                   * env3
+                   * P800_OSC_BUS_GAIN;
         }
 
         const float modulation =

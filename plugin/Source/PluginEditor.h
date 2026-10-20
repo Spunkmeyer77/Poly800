@@ -30,6 +30,18 @@ private:
     void typeDigit (int digit);
     void setFromDrag (p800::HitKind, juce::Point<float> design);
 
+    // Presets
+    juce::Rectangle<int> screenAreaFor (juce::Rectangle<float> design) const;
+    void showBankMenu();
+    void showPresetMenu();
+    void askSave();
+    void saveTo (const juce::String& bank, const juce::String& name);
+    void askNewBank();
+    void askDeletePreset();
+    void askDeleteBank();
+    void openPresetFile();
+    std::unique_ptr<juce::FileChooser> chooser;
+
     P800Processor& processor;
     p800::PanelView view;
     p800::PanelState state;

@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # P-800 - AU/VST3 wrapper around the ISLA Poly-800 core.
 cmake_minimum_required(VERSION 3.22)
-project(P800 VERSION 0.3.0 LANGUAGES C CXX)
+project(P800 VERSION 0.4.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_OSX_DEPLOYMENT_TARGET "11.0" CACHE STRING "")
@@ -49,6 +49,7 @@ target_sources(P800 PRIVATE
     Source/PluginProcessor.cpp
     Source/PluginEditor.cpp
     Source/PanelView.cpp
+    Source/PresetManager.cpp
     ${CORE_DIR}/poly800_core_m6.c)
 
 target_include_directories(P800 PRIVATE ${CORE_DIR} Source)
@@ -96,3 +97,12 @@ if(NOT MSVC)
     target_link_libraries(effects_test PRIVATE m)
 endif()
 add_test(NAME effects COMMAND effects_test)
+
+# Preset manager test (banks, save/load, favourites) on JUCE core/events/data_structures only.
+juce_add_console_app(preset_test)
+target_sources(preset_test PRIVATE tests/preset_test.cpp Source/PresetManager.cpp)
+target_include_directories(preset_test PRIVATE Source)
+target_compile_definitions(preset_test PRIVATE JUCE_USE_CURL=0 JUCE_WEB_BROWSER=0 JUCE_STANDALONE_APPLICATION=1)
+target_link_libraries(preset_test PRIVATE juce::juce_data_structures juce::juce_events juce::juce_core)
+add_test(NAME presets COMMAND preset_test)
+

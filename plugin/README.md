@@ -3,13 +3,17 @@
 AU / VST3 instrument by Ticco Ross, built on the ISLA Poly-800 synthesis core
 (`../src`). GPL-3.0-or-later, like the core.
 
-## Status: step 3 — hardware panel
+## Status: 0.4.0
 
 ![P-800 panel](docs/panel.png)
 
 - All 47 stock Poly-800 sound parameters (P11–P84) exposed as host parameters,
   named by their original numbers.
-- The 64 MkI factory programs as host programs/presets.
+- The 64 MkI factory programs as host programs, and as the built-in **Factory**
+  bank of the preset manager (`Source/PresetManager.*`, based on Polytwelve's):
+  user banks are folders of `.p800preset` files, plus a Favourites bank; save,
+  delete, new/delete bank, previous/next, open file, and keypad loading by
+  hardware number (11..88) within the bank shown.
 - Volume and Tune.
 - Hardware-style panel (resizable, fixed aspect): brushed metal, LED display,
   keypad (two digits pick a parameter, or a program in PROG mode), UP/DOWN,
@@ -38,6 +42,9 @@ AU / VST3 instrument by Ticco Ross, built on the ISLA Poly-800 synthesis core
 joystick centred the core output is unchanged, and the original core tests
 still pass. Joystick MG uses the same ROM fixed-point depth law as P83/P84.
 
+- **Noise level fix (0.4.0):** noise joined the mixer without the 8x
+  oscillator bus gain, so P33 = 15 was ~19 dB below one voice and inaudible
+  under any note. It now takes the same gain (`src/poly800_core_m6.c`).
 - **Keyboard tracking fix (0.3.0):** the Bristol-derived filter replaced the
   cutoff with 4 x note frequency x P41 when P43 was on, so P41 hardly did
   anything on 42 of the 64 factory programs. P43 now scales the normal cutoff by
@@ -87,8 +94,12 @@ juce_core, juce_events and juce_graphics); `docs/panel.png` comes from it.
 
 ## Tests
 
+`tests/preset_test.cpp` checks banks, save/load, overwrite, numbering,
+previous/next, favourites, deleting and opening files (temporary folder).
+
 `tests/filter_test.cpp` checks that P41 sweeps the filter at every P43/P45
-setting and that tracking opens the filter on higher notes.
+setting, that tracking opens the filter on higher notes, and that P33 noise
+is audible.
 
 `tests/effects_test.cpp` checks Chorus, Phaser and Ensemble for level, stereo
 and speed, and that P48 off is dry.

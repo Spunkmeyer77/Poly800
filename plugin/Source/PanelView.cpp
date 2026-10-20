@@ -218,6 +218,16 @@ void PanelView::buildLayout()
         chorusTypeR[(size_t) i] = { 1300.0f, 72.0f + (float) i * 26.0f, 100.0f, 22.0f };
     speedTrack = { 1110, 200, 290, 16 };
 
+    // Presets, under the effect speed slider.
+    bankR       = { 1100, 254, 310, 28 };
+    presetPrevR = { 1100, 290, 34, 28 };
+    presetNameR = { 1140, 290, 230, 28 };
+    presetNextR = { 1376, 290, 34, 28 };
+    saveR       = { 1100, 326, 70, 26 };
+    newBankR    = { 1176, 326, 94, 26 };
+    deleteR     = { 1276, 326, 76, 26 };
+    favR        = { 1358, 326, 52, 26 };
+
     // Parameter chart.
     cells.clear();
     groups.clear();
@@ -259,6 +269,14 @@ Hit PanelView::hitTest (juce::Point<float> p) const
     for (int i = 0; i < 3; ++i)
         if (chorusTypeR[(size_t) i].contains (p)) return { HitKind::chorusType, i };
     if (speedTrack.expanded (4, 10).contains (p)) return { HitKind::chorusSpeed };
+    if (bankR.contains (p)) return { HitKind::bankMenu };
+    if (presetPrevR.contains (p)) return { HitKind::presetPrev };
+    if (presetNameR.contains (p)) return { HitKind::presetMenu };
+    if (presetNextR.contains (p)) return { HitKind::presetNext };
+    if (saveR.contains (p)) return { HitKind::presetSave };
+    if (newBankR.contains (p)) return { HitKind::newBank };
+    if (deleteR.contains (p)) return { HitKind::presetDelete };
+    if (favR.contains (p)) return { HitKind::presetFavourite };
     if (upR.contains (p)) return { HitKind::valueUp };
     if (downR.contains (p)) return { HitKind::valueDown };
     if (progPrevR.contains (p)) return { HitKind::progPrev };
@@ -296,7 +314,8 @@ void PanelView::paint (juce::Graphics& g, const PanelState& s) const
                  + utf8 ("   |   CHORD MEMORY: ") + s.chordName + " (" + s.chordNotes + ")"
                  + utf8 ("   |   BEND \xc2\xb1") + juce::String (s.bendRange) + " ST",
               strip, uiFont (13.0f), cDim, juce::Justification::centredLeft);
-    drawText (g, s.programName.toUpperCase(), strip, uiFont (14.0f, true), cCream, juce::Justification::centredRight);
+    drawText (g, (s.bankName + utf8 (" \xc2\xb7 ") + s.presetName).toUpperCase(), strip, uiFont (14.0f, true), cCream,
+              juce::Justification::centredRight);
 
     // Tune.
     drawText (g, "\xe2\x99\xad  \xc2\xb7  \xc2\xb7  \xc2\xb7  \xc2\xb7  0  \xc2\xb7  \xc2\xb7  \xc2\xb7  \xc2\xb7  \xe2\x99\xaf",
@@ -414,14 +433,54 @@ void PanelView::paint (juce::Graphics& g, const PanelState& s) const
     drawText (g, speedNames[juce::jlimit (0, 2, s.chorusType)], speedTrack.translated (0, 22).withHeight (18),
               uiFont (13.0f, true), cCream);
 
+    paintPresets (g, s);
+
     // Section labels.
     drawSectionLabel (g, { 34, 386, 190, 22 }, "JOYSTICK / TUNE", false);
     drawSectionLabel (g, { 232, 386, 64, 22 }, "VOL", false);
     drawSectionLabel (g, { 304, 386, 146, 22 }, "KEY ASSIGN", false);
     drawSectionLabel (g, { 462, 386, 600, 22 }, utf8 ("PROGRAMMER \xc2\xb7 ") + (s.progEntry ? "PROGRAM ENTRY" : "PARAMETER ENTRY"), true);
-    drawSectionLabel (g, { 1090, 386, 320, 22 }, "PERFORMANCE / EFFECTS", false);
+    drawSectionLabel (g, { 1090, 386, 320, 22 }, "PERFORMANCE / EFFECTS / PRESETS", false);
 
     paintChart (g, s);
+}
+
+void PanelView::paintPresets (juce::Graphics& g, const PanelState& s) const
+{
+    // Recessed LED-style boxes for the bank and the preset name.
+    auto box = [&] (juce::Rectangle<float> r)
+    {
+        g.setColour (juce::Colour (0xff060606));
+        g.fillRoundedRectangle (r, 3.0f);
+        g.setColour (juce::Colours::black);
+        g.drawRoundedRectangle (r, 3.0f, 1.5f);
+        g.setColour (juce::Colours::white.withAlpha (0.12f));
+        g.drawLine (r.getX() + 3, r.getBottom() + 1, r.getRight() - 3, r.getBottom() + 1, 1.0f);
+    };
+    auto button = [&] (juce::Rectangle<float> r, const juce::String& text, bool lit, bool enabled)
+    {
+        g.setColour (lit ? cAccent : juce::Colour (0xff2b2c2f));
+        g.fillRoundedRectangle (r, 3.0f);
+        g.setColour (juce::Colours::black);
+        g.drawRoundedRectangle (r, 3.0f, 1.0f);
+        drawText (g, text, r, uiFont (12.0f, true), lit ? cDark : (enabled ? cCream : cDim.withAlpha (0.5f)));
+    };
+
+    box (bankR);
+    drawText (g, "BANK", bankR.withWidth (52).withTrimmedLeft (8), uiFont (11.0f, true), cDim, juce::Justification::centredLeft);
+    drawText (g, s.bankName.toUpperCase(), bankR.withTrimmedLeft (52).withTrimmedRight (26), ledFont (15.0f), cLed,
+              juce::Justification::centredLeft);
+    drawText (g, utf8 ("\xe2\x96\xbc"), bankR.withTrimmedLeft (bankR.getWidth() - 24), uiFont (10.0f), cCream);
+
+    button (presetPrevR, utf8 ("\xe2\x97\x80"), false, true);
+    button (presetNextR, utf8 ("\xe2\x96\xb6"), false, true);
+    box (presetNameR);
+    drawText (g, s.presetName, presetNameR.reduced (8, 0), ledFont (15.0f), cLed, juce::Justification::centredLeft);
+
+    button (saveR, "SAVE", false, true);
+    button (newBankR, "NEW BANK", false, true);
+    button (deleteR, "DELETE", false, s.presetIsUser);
+    button (favR, utf8 (s.presetFavourite ? "\xe2\x98\x85" : "\xe2\x98\x86"), s.presetFavourite, true);
 }
 
 void PanelView::paintDisplay (juce::Graphics& g, const PanelState& s) const
@@ -443,7 +502,7 @@ void PanelView::paintDisplay (juce::Graphics& g, const PanelState& s) const
     const juce::String buf = s.entryBuffer.isEmpty() ? juce::String() : s.entryBuffer + "-";
     const int sel = s.selectedParam;
     const juce::String leds[3] = {
-        s.progEntry && buf.isNotEmpty() ? buf : two (s.programNumber),
+        s.progEntry && buf.isNotEmpty() ? buf : (s.programNumber > 0 ? two (s.programNumber) : juce::String ("--")),
         ! s.progEntry && buf.isNotEmpty() ? buf : two (params[sel].number),
         two (s.values[(size_t) sel]),
     };

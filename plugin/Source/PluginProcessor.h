@@ -5,8 +5,9 @@
 #include "ParamSpec.h"
 #include "Engine.h"
 #include "KeyLayer.h"
+#include "PresetManager.h"
 
-class P800Processor : public juce::AudioProcessor
+class P800Processor : public juce::AudioProcessor, public p800::PresetTarget
 {
 public:
     P800Processor();
@@ -46,7 +47,19 @@ public:
 
     juce::AudioProcessorValueTreeState apvts;
 
+    // Presets (banks, factory programs). Message thread.
+    p800::PresetManager& getPresetManager() { return *presets; }
+    juce::ValueTree captureSound() override;
+    void restoreSound (const juce::ValueTree&) override;
+    void loadFactory (int index) override { selectProgram (index); }
+    int numFactory() const override;
+    juce::String factoryName (int index) const override;
+
 private:
+    static const juce::StringArray& soundParamIds(); // everything a preset stores
+    void setParamValue (const juce::String& id, float value);
+    std::unique_ptr<p800::PresetManager> presets;
+
     static juce::AudioProcessorValueTreeState::ParameterLayout createLayout();
     Poly800Params currentCoreParams() const;
     void updatePerformance();

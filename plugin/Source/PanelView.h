@@ -28,14 +28,20 @@ struct PanelState
     juce::String chordNotes { "C3 Eb3 G3" };
     int chorusType = 0;                     // effect: 0 Chorus, 1 Phaser, 2 Ensemble
     float chorusSpeed = 0.4f;               // 0..1
-    juce::String version { "0.3.0" };       // set from JucePlugin_VersionString by the editor
+    juce::String version { "0.4.0" };       // set from JucePlugin_VersionString by the editor
+    // Presets
+    juce::String bankName { "Factory" };
+    juce::String presetName { "11 Strings" };
+    bool presetFavourite = false;
+    bool presetIsUser = false;               // DELETE is only active for user presets
 };
 
 enum class HitKind
 {
     none, joystick, volume, tune, cell, key, progPara, valueUp, valueDown,
     voices, chorus, poly, hold, progPrev, progNext,
-    chord, memory, chorusType, chorusSpeed
+    chord, memory, chorusType, chorusSpeed,
+    bankMenu, presetMenu, presetPrev, presetNext, presetSave, newBank, presetDelete, presetFavourite
 };
 
 struct Hit
@@ -60,6 +66,8 @@ public:
     juce::Rectangle<float> volumeTrack() const { return volTrack; }
     juce::Rectangle<float> tuneTrack() const { return tuneTrackR; }
     juce::Rectangle<float> chorusSpeedTrack() const { return speedTrack; }
+    juce::Rectangle<float> bankArea() const { return bankR; }
+    juce::Rectangle<float> presetNameArea() const { return presetNameR; }
 
     static int indexOfParam (int number);
 
@@ -87,6 +95,8 @@ private:
     juce::Rectangle<float> panel, joyBox, volTrack, tuneTrackR, display,
         progPrevR, progNextR, upR, downR, polyR, chordR, holdR, memoryR, voicesR, chorusR, speedTrack;
     std::array<juce::Rectangle<float>, 3> chorusTypeR {};
+    juce::Rectangle<float> bankR, presetPrevR, presetNameR, presetNextR, saveR, newBankR, deleteR, favR;
+    void paintPresets (juce::Graphics&, const PanelState&) const;
     std::array<juce::Rectangle<float>, 9> keyR {}; // 7 8 P / 4 5 6 / 1 2 3
     std::array<int, 9> keyDigit {};
     juce::Image metal; // pre-rendered brushed metal
