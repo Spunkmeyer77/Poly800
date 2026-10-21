@@ -23,6 +23,7 @@ struct SeqView
     int lockParam = 18;              // index into p800::params shown in the P-LOCK lane (P41)
     int selectedStep = 0;
     double hostBpm = 0.0;            // shown when synced to the host, 0 if unknown
+    int laneHeight = 80;             // the lower lane (PROB / GATE / P-LOCK), resizable by dragging
     SeqData data;
 };
 
@@ -45,7 +46,7 @@ struct PanelState
     juce::String chordNotes { "C3 Eb3 G3" };
     int chorusType = 0;                     // effect: 0 Chorus, 1 Phaser, 2 Ensemble
     float chorusSpeed = 0.4f;               // 0..1
-    juce::String version { "0.5.1" };       // set from JucePlugin_VersionString by the editor
+    juce::String version { "0.5.2" };       // set from JucePlugin_VersionString by the editor
     // Presets
     juce::String bankName { "Factory" };
     juce::String presetName { "11 Strings" };
@@ -62,7 +63,8 @@ enum class HitKind
     bankMenu, presetMenu, presetPrev, presetNext, presetSave, newBank, presetDelete, presetFavourite,
     seqToggle, seqPlay,
     seqLength, seqPattern, seqRate, seqSwing, seqGate, seqSync, seqBpm, seqOctUp, seqOctDown,
-    seqRec, seqCopy, seqClear, seqStepNumber, seqGrid, seqLaneTab, seqLane, seqLockParam
+    seqRec, seqCopy, seqClear, seqStepNumber, seqGrid, seqLaneTab, seqLane, seqLockParam,
+    seqTie, seqRest, seqSplitter
 };
 
 struct Hit
@@ -84,11 +86,25 @@ public:
     Hit hitTest (juce::Point<float> designPos, const PanelState&) const;
 
     // Sequencer geometry (design coordinates), for the editor's dragging.
-    static juce::Rectangle<float> seqGridArea()  { return { 96, 468, 1312, 216 }; }
-    static juce::Rectangle<float> seqLaneValues() { return { 96, 732, 1312, 38 }; }
-    static constexpr int seqRows = 24;
+    // The grid and the lane share the space; dragging the splitter between them moves it.
+    static constexpr int minLaneHeight = 80, maxLaneHeight = 200;
+    static int clampLane (int h)                          { return juce::jlimit (minLaneHeight, maxLaneHeight, h); }
+    static float seqLaneTop (int laneH)                   { return 772.0f - (float) clampLane (laneH); }
+    static juce::Rectangle<float> seqGridArea (int laneH) { return { 96, 468, 1312, seqLaneTop (laneH) - 10.0f - 468.0f }; }
+    static juce::Rectangle<float> seqSplitter (int laneH) { return { 30, seqLaneTop (laneH) - 10.0f, 1378, 10 }; }
+    static juce::Rectangle<float> seqLaneArea (int laneH) { return { 96, seqLaneTop (laneH), 1312, (float) clampLane (laneH) }; }
+    static juce::Rectangle<float> seqLaneValues (int laneH)
+    {
+        const auto a = seqLaneArea (laneH);
+        return { a.getX(), a.getY() + 38.0f, a.getWidth(), a.getHeight() - 44.0f };
+    }
+    static juce::Rectangle<float> seqLockParamArea (int laneH) { return { 102, seqLaneTop (laneH) + 4.0f, 250, 18 }; }
+    static int seqRowsFor (int laneH)                      // fewer rows when the lane takes the room
+    {
+        const float h = seqGridArea (laneH).getHeight();
+        return h >= 200.0f ? 24 : (h >= 130.0f ? 18 : 12);
+    }
     juce::Rectangle<float> seqRateArea() const   { return { 598, 423, 50, 22 }; }
-    juce::Rectangle<float> seqLockParamArea() const { return { 102, 696, 210, 18 }; }
 
     // Geometry the editor needs for dragging.
     juce::Rectangle<float> joystickArea() const { return joyBox; }

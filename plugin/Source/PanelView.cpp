@@ -315,7 +315,9 @@ struct SeqBar
     static juce::Rectangle<float> rec()           { return { 1146, y, 52, h }; }
     static juce::Rectangle<float> copy()          { return { 1204, y, 60, h }; }
     static juce::Rectangle<float> clear()         { return { 1270, y, 56, h }; }
-    static juce::Rectangle<float> laneTab (int i) { return { 30.0f, 692.0f + (float) i * 27.0f, 62, 23 }; }
+    static juce::Rectangle<float> laneTab (int i, int laneH) { return { 30.0f, PanelView::seqLaneTop (laneH) + (float) i * 27.0f, 62, 23 }; }
+    static juce::Rectangle<float> tie()           { return { 1332, y, 36, h }; }
+    static juce::Rectangle<float> rest()          { return { 1372, y, 38, h }; }
     static constexpr float numY = 452, numH = 14;
 };
 } // namespace
@@ -340,10 +342,15 @@ Hit PanelView::hitTest (juce::Point<float> p, const PanelState& st) const
         if (SeqBar::rec().contains (p)) return { HitKind::seqRec };
         if (SeqBar::copy().contains (p)) return { HitKind::seqCopy };
         if (SeqBar::clear().contains (p)) return { HitKind::seqClear };
-        for (int i = 0; i < 3; ++i) if (SeqBar::laneTab (i).contains (p)) return { HitKind::seqLaneTab, i };
-        if (q.lane == 2 && seqLockParamArea().contains (p)) return { HitKind::seqLockParam };
+        if (SeqBar::tie().contains (p)) return { HitKind::seqTie };
+        if (SeqBar::rest().contains (p)) return { HitKind::seqRest };
+        const int laneH = q.laneHeight;
+        for (int i = 0; i < 3; ++i) if (SeqBar::laneTab (i, laneH).contains (p)) return { HitKind::seqLaneTab, i };
+        if (q.lane == 2 && seqLockParamArea (laneH).contains (p)) return { HitKind::seqLockParam };
+        if (seqSplitter (laneH).contains (p)) return { HitKind::seqSplitter };
 
-        const auto grid = seqGridArea();
+        const auto grid = seqGridArea (laneH);
+        const int seqRows = seqRowsFor (laneH);
         const float colW = grid.getWidth() / (float) length;
         if (p.x >= grid.getX() && p.x < grid.getRight())
         {
@@ -354,7 +361,7 @@ Hit PanelView::hitTest (juce::Point<float> p, const PanelState& st) const
                 const int row = juce::jlimit (0, seqRows - 1, (int) ((grid.getBottom() - p.y) / (grid.getHeight() / (float) seqRows)));
                 return { HitKind::seqGrid, step, q.lowNote + row };
             }
-            if (seqLaneValues().expanded (0, 4).contains (p)) return { HitKind::seqLane, step };
+            if (seqLaneArea (laneH).withTrimmedTop (24).contains (p)) return { HitKind::seqLane, step };
         }
         return {};
     }
@@ -669,11 +676,14 @@ void PanelView::paintSequencer (juce::Graphics& g, const PanelState& s) const
     drawPanelButton (g, SeqBar::rec(), "REC", q.recording, true, false, q.recording ? cLed : cCream);
     drawPanelButton (g, SeqBar::copy(), q.pasteArmed ? "PASTE" : "COPY", q.pasteArmed, true, false);
     drawPanelButton (g, SeqBar::clear(), "CLEAR", false, true, false);
+    drawPanelButton (g, SeqBar::tie(), "TIE", false, q.recording, false);
+    drawPanelButton (g, SeqBar::rest(), "REST", false, q.recording, false);
 
     // ---- note grid: 2 octaves, polyphonic ----------------------------------------------
-    const auto grid = seqGridArea();
+    const int laneH = q.laneHeight;
+    const auto grid = seqGridArea (laneH);
     const float gx = grid.getX(), gw = grid.getWidth(), gy = grid.getY(), gh = grid.getHeight();
-    const int rows = seqRows;
+    const int rows = seqRowsFor (laneH);
     const float rowH = gh / (float) rows, colW = gw / (float) length;
     auto isBlack = [] (int n) { const int pc = n % 12; return pc == 1 || pc == 3 || pc == 6 || pc == 8 || pc == 10; };
 
@@ -749,10 +759,21 @@ void PanelView::paintSequencer (juce::Graphics& g, const PanelState& s) const
         }
 
     // ---- lane: probability / gate / parameter lock -----------------------------------------
-    const float ly = 692, lh = 80;
+    const float ly = seqLaneTop (laneH), lh = (float) clampLane (laneH);
+
+    // Splitter between the grid and the lane: drag it to resize the lane.
+    {
+        const auto sp = seqSplitter (laneH);
+        const float cx = gx + gw * 0.5f, cy = sp.getCentreY();
+        g.setColour (juce::Colour (0xff2c2d31));
+        g.fillRoundedRectangle (juce::Rectangle<float> (60, 5).withCentre ({ cx, cy }), 2.0f);
+        g.setColour (cDim.withAlpha (0.7f));
+        for (int i = -1; i <= 1; ++i)
+            g.drawLine (cx - 18, cy + (float) i * 1.6f, cx + 18, cy + (float) i * 1.6f, 0.8f);
+    }
     const char* tabs[3] = { "PROB", "GATE", "P-LOCK" };
     for (int i = 0; i < 3; ++i)
-        drawPanelButton (g, SeqBar::laneTab (i), tabs[i], q.lane == i, true, true, cCream, 9.5f);
+        drawPanelButton (g, SeqBar::laneTab (i, laneH), tabs[i], q.lane == i, true, true, cCream, 9.5f);
     g.setColour (juce::Colour (0xff17171a));
     g.fillRect (juce::Rectangle<float> (gx, ly, gw, lh));
     for (int c = 0; c <= length; c += 4)
@@ -761,14 +782,21 @@ void PanelView::paintSequencer (juce::Graphics& g, const PanelState& s) const
         g.drawLine (gx + (float) c * colW, ly, gx + (float) c * colW, ly + lh, 1.0f);
     }
 
-    const auto values = seqLaneValues();
-    const auto sel = seqLockParamArea();
+    const auto values = seqLaneValues (laneH);
+    const auto sel = seqLockParamArea (laneH);
+    for (int k = 1; k <= 3; ++k) // 25 / 50 / 75 % guide lines
+    {
+        const float yy = values.getBottom() - values.getHeight() * (float) k / 4.0f;
+        g.setColour (juce::Colours::white.withAlpha (0.05f));
+        g.drawLine (gx, yy, gx + gw, yy, 1.0f);
+    }
     g.setColour (juce::Colour (0xff060606));
     g.fillRoundedRectangle (sel, 3.0f);
     if (q.lane == 2)
     {
-        const auto& spec = params[q.lockParam];
-        drawText (g, juce::String (spec.number) + " " + juce::String (spec.name).toUpperCase() + utf8 ("  \xe2\x96\xbc"),
+        const auto spec = lockSpec (q.lockParam);
+        drawText (g, (spec.number > 0 ? juce::String (spec.number) + " " : juce::String())
+                     + juce::String (spec.name).toUpperCase() + utf8 ("  \xe2\x96\xbc"),
                   sel, ledFont (12.0f), cLed);
     }
     else
@@ -784,8 +812,8 @@ void PanelView::paintSequencer (juce::Graphics& g, const PanelState& s) const
         if (q.lane == 2)
         {
             const int v = stp.locks[(size_t) q.lockParam];
-            if (v < 0) { drawText (g, "-", col, uiFont (12.0f), cDim.withAlpha (0.5f)); continue; }
-            const auto& spec = params[q.lockParam];
+            if (v == kNoLock) { drawText (g, "-", col, uiFont (12.0f), cDim.withAlpha (0.5f)); continue; }
+            const auto spec = lockSpec (q.lockParam);
             f = (float) (v - spec.minValue) / (float) juce::jmax (1, spec.maxValue - spec.minValue);
             label = juce::String (v);
         }

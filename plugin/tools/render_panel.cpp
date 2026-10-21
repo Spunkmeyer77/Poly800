@@ -47,6 +47,7 @@ int main (int argc, char** argv)
         return 1;
     const float scale = argc > 2 ? (float) std::atof (argv[2]) : 1.0f;
     const juce::String mode = argc > 3 ? argv[3] : "params";
+    const int laneHeight = argc > 4 ? std::atoi (argv[4]) : 80;
 
     p800::PanelView view;
     p800::PanelState s;
@@ -58,6 +59,8 @@ int main (int argc, char** argv)
     s.joyY = 0.4f;
     if (mode == "seq16") fillSequencerExample (s.seq, 16);
     if (mode == "seq32") fillSequencerExample (s.seq, 32);
+    s.seq.laneHeight = laneHeight;
+    s.seq.recording = mode.startsWith ("seq");
 
     juce::Image img (juce::Image::RGB, juce::roundToInt (p800::PanelView::width * scale),
                      juce::roundToInt (p800::PanelView::height * scale), true);

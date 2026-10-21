@@ -75,6 +75,7 @@ void P800Editor::refreshState()
     s.seq.playStep = processor.getSeqPlayStep();
     s.seq.selectedStep = processor.getSeqSelectedStep();
     s.seq.hostBpm = processor.getHostBpm();
+    s.seq.laneHeight = processor.getSeqLaneHeight();
     const int seqVersion = processor.getSeqVersion();
     const bool seqChanged = seqVersion != lastSeqVersion;
     if (seqChanged) { s.seq.data = processor.getSeqData(); lastSeqVersion = seqVersion; }
@@ -105,7 +106,8 @@ void P800Editor::refreshState()
                       || s.presetFavourite != state.presetFavourite || s.presetIsUser != state.presetIsUser
                       || seqChanged || s.seq.playing != state.seq.playing || s.seq.recording != state.seq.recording
                       || s.seq.playStep != state.seq.playStep || s.seq.selectedStep != state.seq.selectedStep
-                      || juce::roundToInt (s.seq.hostBpm) != juce::roundToInt (state.seq.hostBpm);
+                      || juce::roundToInt (s.seq.hostBpm) != juce::roundToInt (state.seq.hostBpm)
+                      || s.seq.laneHeight != state.seq.laneHeight;
     state = s;
     if (changed)
         repaint();
@@ -277,10 +279,17 @@ void P800Editor::mouseDrag (const juce::MouseEvent& e)
             setFromDrag (dragHit.kind, toDesign (e.position));
             break;
         case HitKind::seqGrid: case HitKind::seqLane: case HitKind::seqSwing: case HitKind::seqGate: case HitKind::seqBpm:
+        case HitKind::seqSplitter:
             seqMouseDrag (toDesign (e.position));
             break;
         default: break;
     }
+}
+
+void P800Editor::mouseMove (const juce::MouseEvent& e)
+{
+    const bool overSplitter = view.hitTest (toDesign (e.position), state).kind == HitKind::seqSplitter;
+    setMouseCursor (overSplitter ? juce::MouseCursor::UpDownResizeCursor : juce::MouseCursor::NormalCursor);
 }
 
 void P800Editor::mouseUp (const juce::MouseEvent&)
@@ -597,6 +606,16 @@ bool P800Editor::seqMouseDown (const p800::Hit& hit, const juce::MouseEvent& e, 
         case HitKind::seqClear: askClearPattern(); return true;
         case HitKind::seqStepNumber: processor.setSeqSelectedStep (hit.index); return true;
         case HitKind::seqLaneTab: q.lane = hit.index; return true;
+        case HitKind::seqSplitter: return true; // dragged in seqMouseDrag
+        case HitKind::seqTie: case HitKind::seqRest:
+        {
+            // Step record: TIE stretches the notes ending here into this step; REST leaves it empty.
+            const int sel = processor.getSeqSelectedStep(), len = q.data.pat().length;
+            if (hit.kind == HitKind::seqTie)
+                processor.editSeq ([sel] (SeqData& s) { s.tieInto (sel); });
+            processor.setSeqSelectedStep ((sel + 1) % len);
+            return true;
+        }
         case HitKind::seqLockParam: showLockParamMenu(); return true;
         case HitKind::seqLane:
             setLaneValue (hit.index, d.y, e.mods.isPopupMenu() || e.getNumberOfClicks() > 1);
@@ -641,7 +660,7 @@ void P800Editor::seqMouseDrag (juce::Point<float> d)
         case HitKind::seqGrid:
         {
             if (seqDragIndex < 0) return;
-            const auto grid = p800::PanelView::seqGridArea();
+            const auto grid = p800::PanelView::seqGridArea (q.laneHeight);
             const int length = q.data.pat().length;
             const int step = juce::jlimit (0, length - 1, (int) ((d.x - grid.getX()) / (grid.getWidth() / (float) length)));
             const int newLen = juce::jmax (1, step - seqDragStart + 1);
@@ -655,12 +674,15 @@ void P800Editor::seqMouseDrag (juce::Point<float> d)
         }
         case HitKind::seqLane:
         {
-            const auto lane = p800::PanelView::seqLaneValues();
+            const auto lane = p800::PanelView::seqLaneValues (q.laneHeight);
             const int length = q.data.pat().length;
             const int step = juce::jlimit (0, length - 1, (int) ((d.x - lane.getX()) / (lane.getWidth() / (float) length)));
             setLaneValue (step, d.y, false);
             break;
         }
+        case HitKind::seqSplitter:
+            processor.setSeqLaneHeight (p800::PanelView::clampLane (juce::roundToInt (772.0f - d.y)));
+            break;
         case HitKind::seqSwing: case HitKind::seqGate: case HitKind::seqBpm:
         {
             const int delta = juce::roundToInt ((dragStartY - d.y) / 3.0f);
@@ -704,7 +726,7 @@ void P800Editor::seqWheel (const p800::Hit& hit, int delta)
 
 void P800Editor::setLaneValue (int step, float y, bool reset)
 {
-    const auto lane = p800::PanelView::seqLaneValues();
+    const auto lane = p800::PanelView::seqLaneValues (state.seq.laneHeight);
     const float f = juce::jlimit (0.0f, 1.0f, (lane.getBottom() - y) / lane.getHeight());
     const int which = state.seq.lane, param = state.seq.lockParam;
     processor.editSeq ([=] (p800::SeqData& s)
@@ -715,7 +737,7 @@ void P800Editor::setLaneValue (int step, float y, bool reset)
         else if (reset)      s.clearLock (step, param);
         else
         {
-            const auto& spec = p800::params[param];
+            const auto spec = p800::lockSpec (param);
             s.setLock (step, param, spec.minValue + juce::roundToInt (f * (float) (spec.maxValue - spec.minValue)));
         }
     });
@@ -762,11 +784,23 @@ void P800Editor::showLockParamMenu()
         }
         menu.addSubMenu (grp[0], sub);
     }
+    {
+        // The other assignable controls: effect, volume, tune, joystick.
+        juce::PopupMenu sub;
+        for (int i = 0; i < p800::numLockExtras; ++i)
+        {
+            const int slot = p800::numParams + i;
+            juce::String label = p800::lockExtras[i].name;
+            if (d.patternHasLocksFor (slot)) label << "  " << juce::String (juce::CharPointer_UTF8 ("\xe2\x97\x8f"));
+            sub.addItem (slot + 1, label, true, slot == state.seq.lockParam);
+        }
+        menu.addSubMenu ("Effect / Performance", sub);
+    }
     menu.addSeparator();
-    menu.addItem (1000, "Clear locks for " + juce::String (p800::params[state.seq.lockParam].name) + " in this pattern",
+    menu.addItem (1000, "Clear locks for " + juce::String (p800::lockSpec (state.seq.lockParam).name) + " in this pattern",
                   d.patternHasLocksFor (state.seq.lockParam));
     juce::Component::SafePointer<P800Editor> safe (this);
-    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (this).withTargetScreenArea (screenAreaFor (view.seqLockParamArea())),
+    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (this).withTargetScreenArea (screenAreaFor (p800::PanelView::seqLockParamArea (state.seq.laneHeight))),
         [safe] (int r)
         {
             if (safe == nullptr || r <= 0) return;

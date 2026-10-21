@@ -9,6 +9,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <climits>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -20,6 +21,36 @@ namespace p800
 constexpr int kSeqMaxSteps = 32;
 constexpr int kSeqMaxNotes = 8;    // the synth's voice count
 constexpr int kSeqPatterns = 8;    // A..H
+
+// ---- what can be parameter-locked ------------------------------------------------------------
+// Slots 0..numParams-1 are the chart parameters (index into p800::params); the rest are the other
+// assignable controls. Values are integers in each slot's range; kNoLock means "not locked".
+constexpr int16_t kNoLock = INT16_MIN;
+struct LockExtra { const char* id; const char* name; int minValue, maxValue; };
+inline constexpr LockExtra lockExtras[] = {
+    { "chorusSpeed", "Effect Speed", 0, 100 },   // % of the SPEED slider
+    { "chorusType",  "Effect Type",  0, 2 },     // 0 Chorus, 1 Phaser, 2 Ensemble
+    { "master",      "Volume",       0, 100 },   // % of the VOLUME fader
+    { "tune",        "Tune",      -100, 100 },   // cents
+    { "joyX",        "Joystick X (Bend)", -100, 100 },
+    { "joyY",        "Joystick Y (DCO+ / VCF-)", -100, 100 },
+};
+constexpr int numLockExtras = (int) (sizeof (lockExtras) / sizeof (lockExtras[0]));
+constexpr int kLockSlots = numParams + numLockExtras;
+
+struct LockSpec { int number; const char* name; int minValue, maxValue; }; // number 0 for the extras
+inline LockSpec lockSpec (int slot)
+{
+    if (slot < numParams) return { params[slot].number, params[slot].name, params[slot].minValue, params[slot].maxValue };
+    const auto& e = lockExtras[slot - numParams];
+    return { 0, e.name, e.minValue, e.maxValue };
+}
+inline int lockSlotOf (const char* extraId)
+{
+    for (int i = 0; i < numLockExtras; ++i)
+        if (std::string (lockExtras[i].id) == extraId) return numParams + i;
+    return -1;
+}
 
 struct SeqNote
 {
@@ -34,11 +65,11 @@ struct SeqStep
     std::array<SeqNote, kSeqMaxNotes> notes {};
     uint8_t probability = 100;     // % chance the step plays
     uint8_t gate = 100;            // % of the global gate, for this step
-    std::array<int16_t, numParams> locks; // per parameter (index into p800::params), -1 = not locked
+    std::array<int16_t, kLockSlots> locks; // per lock slot (see lockSpec), kNoLock = not locked
 
-    SeqStep() { locks.fill (-1); }
+    SeqStep() { locks.fill (kNoLock); }
     int noteCount() const { int n = 0; for (auto& x : notes) n += x.used() ? 1 : 0; return n; }
-    bool hasLocks() const { for (auto v : locks) if (v >= 0) return true; return false; }
+    bool hasLocks() const { for (auto v : locks) if (v != kNoLock) return true; return false; }
     bool empty() const { return noteCount() == 0 && ! hasLocks(); }
 };
 
@@ -111,17 +142,36 @@ struct SeqData
         if (n.used()) n.length = (uint8_t) std::clamp (length, 1, pat().length - step);
     }
 
-    void setLock (int step, int paramIndex, int value)
+    void setLock (int step, int slot, int value)
     {
-        const auto& s = params[paramIndex];
-        pat().steps[(size_t) step].locks[(size_t) paramIndex] = (int16_t) std::clamp (value, s.minValue, s.maxValue);
+        const auto s = lockSpec (slot);
+        pat().steps[(size_t) step].locks[(size_t) slot] = (int16_t) std::clamp (value, s.minValue, s.maxValue);
     }
-    void clearLock (int step, int paramIndex) { pat().steps[(size_t) step].locks[(size_t) paramIndex] = -1; }
-    void clearLocksFor (int paramIndex) { for (auto& st : pat().steps) st.locks[(size_t) paramIndex] = -1; }
-    bool patternHasLocksFor (int paramIndex) const
+    void clearLock (int step, int slot) { pat().steps[(size_t) step].locks[(size_t) slot] = kNoLock; }
+    void clearLocksFor (int slot) { for (auto& st : pat().steps) st.locks[(size_t) slot] = kNoLock; }
+    bool patternHasLocksFor (int slot) const
     {
-        for (int s = 0; s < pat().length; ++s) if (pat().steps[(size_t) s].locks[(size_t) paramIndex] >= 0) return true;
+        for (int s = 0; s < pat().length; ++s) if (pat().steps[(size_t) s].locks[(size_t) slot] != kNoLock) return true;
         return false;
+    }
+
+    // Sets the length of the note with this pitch starting at 'step' (live recording of held notes).
+    void setLengthOf (int step, int note, int length)
+    {
+        if (step < 0 || step >= kSeqMaxSteps) return;
+        for (int i = 0; i < kSeqMaxNotes; ++i)
+            if (pat().steps[(size_t) step].notes[(size_t) i].note == note) { setNoteLength (step, i, length); return; }
+    }
+
+    // Step record TIE: notes that end exactly at 'step' are lengthened by one step.
+    // Returns true if any note was tied.
+    bool tieInto (int step)
+    {
+        bool any = false;
+        for (int s = 0; s < step; ++s)
+            for (auto& n : pat().steps[(size_t) s].notes)
+                if (n.used() && s + n.length == step && step < pat().length) { n.length = (uint8_t) (n.length + 1); any = true; }
+        return any;
     }
 
     void clearPattern() { const int len = pat().length; pat() = SeqPattern(); pat().length = len; }
@@ -151,8 +201,8 @@ struct SeqData
                     if (n.used()) { o << (first ? "" : "/") << (int) n.note << '.' << (int) n.velocity << '.' << (int) n.length; first = false; }
                 o << ',';
                 first = true;
-                for (int i = 0; i < numParams; ++i)
-                    if (st.locks[(size_t) i] >= 0) { o << (first ? "" : "/") << i << '=' << st.locks[(size_t) i]; first = false; }
+                for (int i = 0; i < kLockSlots; ++i)
+                    if (st.locks[(size_t) i] != kNoLock) { o << (first ? "" : "/") << i << '=' << st.locks[(size_t) i]; first = false; }
             }
         }
         return o.str();
@@ -210,9 +260,9 @@ struct SeqData
                 std::string lt;
                 while (std::getline (ls, lt, '/'))
                 {
-                    int idx = -1, v = -1;
-                    if (std::sscanf (lt.c_str(), "%d=%d", &idx, &v) == 2 && idx >= 0 && idx < numParams)
-                        st.locks[(size_t) idx] = (int16_t) std::clamp (v, params[idx].minValue, params[idx].maxValue);
+                    int idx = -1, v = 0;
+                    if (std::sscanf (lt.c_str(), "%d=%d", &idx, &v) == 2 && idx >= 0 && idx < kLockSlots)
+                        st.locks[(size_t) idx] = (int16_t) std::clamp (v, lockSpec (idx).minValue, lockSpec (idx).maxValue);
                 }
             }
             pos = next;

@@ -165,7 +165,7 @@ int main()
         check (pl.activeLocks() == nullptr, "step 1 has no locks");
         pl.process (6000, {}, true, ev);
         const auto* l = pl.activeLocks();
-        check (l != nullptr && l[18] == 80 && l[19] == 12 && l[20] == -1, "step 2 applies its two locks, others untouched");
+        check (l != nullptr && l[18] == 80 && l[19] == 12 && l[20] == kNoLock, "step 2 applies its two locks, others untouched");
         pl.process (6000, {}, true, ev);
         check (pl.activeLocks() == nullptr, "locks end with the step");
         pl.process (512, {}, false, ev);
@@ -196,6 +196,39 @@ int main()
         check (e.patterns[7].steps[3].notes[0].note == 40, "every pattern is saved");
         SeqData f;
         check (! f.deserialise ("garbage") && ! f.deserialise (""), "rejects text that is not a sequence");
+    }
+
+    { // ties and held notes (0.5.2)
+        SeqData d;
+        for (int n : { 48, 52, 55 }) d.addNote (0, n);
+        check (d.tieInto (1) && d.pat().steps[0].notes[0].length == 2, "TIE: notes ending at the selected step get one step longer");
+        check (d.tieInto (2) && d.pat().steps[0].notes[2].length == 3, "TIE again: three steps");
+        check (! d.tieInto (5), "TIE where nothing ends does nothing");
+        d.addNote (8, 60);
+        d.setLengthOf (8, 60, 4);
+        check (d.pat().steps[8].notes[0].length == 4, "a held note recorded live gets its full length");
+        d.setLengthOf (8, 60, 40);
+        check (d.pat().steps[8].notes[0].length == 8, "and is clamped to the end of the pattern");
+        d.pat().length = 16;
+        d.addNote (15, 62);
+        check (! d.tieInto (16), "no tie past the last step");
+    }
+
+    { // the other assignable controls can be locked too (0.5.2)
+        const int speed = lockSlotOf ("chorusSpeed"), tune = lockSlotOf ("tune"), joyX = lockSlotOf ("joyX");
+        check (speed >= numParams && tune > speed && joyX > tune && kLockSlots == numParams + numLockExtras,
+               "Effect Speed, Tune and the joystick have lock slots after the chart parameters");
+        SeqData d;
+        d.setLock (3, speed, 150);
+        d.setLock (3, tune, -50);
+        d.setLock (4, joyX, -100);
+        check (d.pat().steps[3].locks[(size_t) speed] == 100, "Effect Speed lock clamped to 0..100 %");
+        check (d.pat().steps[3].locks[(size_t) tune] == -50 && d.pat().steps[3].hasLocks(), "negative values lock (tune -50 cents)");
+        SeqData e;
+        e.deserialise (d.serialise());
+        check (e.pat().steps[3].locks[(size_t) tune] == -50 && e.pat().steps[4].locks[(size_t) joyX] == -100
+               && e.pat().steps[5].locks[(size_t) tune] == kNoLock, "extra locks survive saving, unlocked stays unlocked");
+        check (std::string (lockSpec (speed).name) == "Effect Speed" && lockSpec (18).number == 41, "lock names and numbers");
     }
 
     { // recording takes what the key assign layer plays (as the processor does since 0.5.1)

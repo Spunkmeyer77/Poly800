@@ -68,6 +68,8 @@ public:
     void setSeqSelectedStep (int step)  { seqSelectedStep.store (step); }
     int  getSeqSelectedStep() const     { return seqSelectedStep.load(); }
     double getHostBpm() const           { return hostBpm.load(); }  // 0 if the host gives none
+    int  getSeqLaneHeight() const       { return seqLaneHeight.load(); }
+    void setSeqLaneHeight (int h)       { seqLaneHeight.store (h); }
 
 private:
     static const juce::StringArray& soundParamIds(); // everything a preset stores
@@ -89,13 +91,15 @@ private:
     std::atomic<bool> seqRun { false }, seqRecording { false };
     std::atomic<int> seqPlayStep { -1 }, seqSelectedStep { 0 };
     std::atomic<double> hostBpm { 0.0 };
+    std::atomic<int> seqLaneHeight { 80 };   // the sequencer's lower lane, resizable by the user
     int heldForStepRec = 0;             // audio thread: keys down while step recording
 
-    struct RecEvent { int type, step, note; };  // 0 add note at step, 1 advance selected step
+    struct RecEvent { int type, step, note, length; }; // 0 add note, 1 advance selected step, 2 set note length
     juce::AbstractFifo recFifo { 256 };
     std::array<RecEvent, 256> recBuffer {};
     void pushRec (RecEvent e);
-    void updatePerformance();
+    void updatePerformance (const int16_t* locks = nullptr);
+    void applyLocks (const int16_t* locks);
 
     p800::Engine engine;
     std::array<std::atomic<float>*, p800::numParams> paramValues {};
@@ -116,11 +120,14 @@ private:
     {
         EngineSink (p800::Engine& e, P800Processor& o) : engine (e), owner (o) {}
         void keyOn (int note, int velocity) override { engine.noteOn (note, velocity); owner.recordPlayedNote (note); }
-        void keyOff (int note) override { engine.noteOff (note); }
+        void keyOff (int note) override { engine.noteOff (note); owner.recordReleasedNote (note); }
         p800::Engine& engine;
         P800Processor& owner;
     };
     void recordPlayedNote (int note);   // audio thread
+    void recordReleasedNote (int note); // audio thread: sets the recorded note's length
+    std::array<double, 128> recStartPos {};
+    std::array<int, 128> recStartStep {};
     p800::KeyLayer keys;
     EngineSink sink { engine, *this };
     float midiBend = 0.0f;    // pitch wheel, -1..1

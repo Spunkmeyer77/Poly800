@@ -1,9 +1,9 @@
 ; Inno Setup script for the P-800 VST3 on Windows.
 ; Built by .github/workflows/poly800-windows-linux.yml:
-;   iscc /DAppVersion=0.5.1 /DSrcDir=<repo> plugin\installer\windows\P-800.iss
+;   iscc /DAppVersion=0.5.2 /DSrcDir=<repo> plugin\installer\windows\P-800.iss
 
 #ifndef AppVersion
-  #define AppVersion "0.5.1"
+  #define AppVersion "0.5.2"
 #endif
 #ifndef SrcDir
   #define SrcDir "..\..\.."

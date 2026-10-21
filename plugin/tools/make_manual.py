@@ -275,6 +275,7 @@ def build():
         "<b>INT</b> runs on its own clock at <b>BPM</b>, from step 1 when you press PLAY.",
         "<b>OCT</b> scrolls the grid by an octave. <b>REC</b> records from your keyboard (below). <b>COPY</b> copies the "
         "pattern and becomes <b>PASTE</b>: choose another pattern and press it. <b>CLEAR</b> empties the pattern.",
+        "<b>TIE</b> and <b>REST</b> are for step recording (below).",
     ])
     s += [Paragraph("Notes", h2)]
     s += bullets([
@@ -283,18 +284,27 @@ def build():
         "Steps are polyphonic: up to 8 notes each, the synth's voice count (in DOUBLE mode the synth has 4 voices, so "
         "bigger chords lose notes).",
         "Clicking a step (or its number) selects it, outlined in the numbers row.",
-        "<b>Recording</b>: with REC on and the sequencer stopped, play a note or chord: it goes on the selected step, and "
-        "when you let go of all keys the selection moves to the next step. While playing, notes you play are added to "
-        "the nearest step. The sequencer records what the key assign plays: in CHORD mode one key records the whole "
-        "stored chord, and with HOLD on you can build a chord note by note.",
+        "<b>Live recording</b>: with REC on while the sequencer plays, the notes you play go on the nearest step and last "
+        "as long as you hold them, so sustained notes are recorded as long notes (with HOLD or the sustain pedal they "
+        "last until you release it).",
+        "<b>Step recording</b>: with REC on and the sequencer stopped, play a note or chord: it goes on the selected step, "
+        "and when you let go of all keys the selection moves to the next step. Press <b>TIE</b> to stretch the notes you "
+        "just entered over the next step (press it again for more steps), or <b>REST</b> to leave a step empty.",
+        "The sequencer records what the key assign plays: in CHORD mode one key records the whole stored chord, and "
+        "with HOLD on you can build a chord note by note.",
     ])
     s += [Paragraph("Lanes: probability, gate and parameter locks", h2)]
     s += bullets([
         "<b>PROB</b>: the chance (0-100%) that a step plays. Drag a bar; right-click or double-click resets it to 100%.",
         "<b>GATE</b>: how long the step's notes sound, as a percentage of the global GATE.",
-        "<b>P-LOCK</b>: choose a parameter at the top of the lane (any chart parameter; the menu marks those with locks), "
-        "then drag a bar to lock that parameter to a value on that step. Steps without a lock show a dash and use the "
-        "panel value. Right-click or double-click removes a lock.",
+        "<b>P-LOCK</b>: choose a parameter at the top of the lane, then drag a bar to lock that parameter to a value on "
+        "that step. Any chart parameter can be locked, and so can the other assignable controls (in the "
+        "<i>Effect / Performance</i> part of the menu): Effect Speed, Effect Type, Volume, Tune and the joystick "
+        "(X bends the pitch, Y adds vibrato or filter movement). The menu marks parameters that have locks. Steps "
+        "without a lock show a dash and use the panel value. Right-click or double-click removes a lock.",
+        "<b>Resizing the lane</b>: drag the handle between the note grid and the lane up to make the lane taller (for "
+        "finer values), or down to give the grid its room back. With a tall lane the grid shows one octave; use OCT to "
+        "scroll it. The size is remembered with your Live set.",
         "A step can lock several parameters: choose another parameter and draw its values. A red dot on a step number "
         "means the step has locks. Locks hold for the length of their step.",
     ])

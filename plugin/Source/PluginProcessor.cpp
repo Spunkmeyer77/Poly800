@@ -24,6 +24,7 @@ P800Processor::P800Processor()
     keyModeParam = apvts.getRawParameterValue ("keyMode");
     chorusTypeParam = apvts.getRawParameterValue ("chorusType");
     chorusSpeedParam = apvts.getRawParameterValue ("chorusSpeed");
+    recStartPos.fill (-1.0);
     presets = std::make_unique<p800::PresetManager> (*this);
     setCurrentProgram (0);
     startTimerHz (30);
@@ -90,11 +91,18 @@ bool P800Processor::isBusesLayoutSupported (const BusesLayout& layouts) const
     return out == juce::AudioChannelSet::stereo() || out == juce::AudioChannelSet::mono();
 }
 
-void P800Processor::updatePerformance()
+// A lock slot's value, or the fallback when the playing step doesn't lock it.
+static float lockedOr (const int16_t* locks, const char* extraId, float scale, float fallback)
+{
+    const int slot = p800::lockSlotOf (extraId);
+    return locks != nullptr && slot >= 0 && locks[slot] != p800::kNoLock ? (float) locks[slot] * scale : fallback;
+}
+
+void P800Processor::updatePerformance (const int16_t* locks)
 {
     const float range = bendRangeParam->load();
-    const float x = juce::jlimit (-1.0f, 1.0f, joyXParam->load() + midiBend);
-    const float y = joyYParam->load();
+    const float x = juce::jlimit (-1.0f, 1.0f, lockedOr (locks, "joyX", 0.01f, joyXParam->load()) + midiBend);
+    const float y = lockedOr (locks, "joyY", 0.01f, joyYParam->load());
     // Mod wheel works like pushing the joystick up.
     const float dco = juce::jlimit (0.0f, 1.0f, juce::jmax (0.0f, y) + midiModWheel);
     const float vcf = juce::jmax (0.0f, -y);
@@ -105,15 +113,24 @@ Poly800Params P800Processor::currentCoreParams (const int16_t* locks) const
 {
     int values[p800::numParams];
     for (int i = 0; i < p800::numParams; ++i)
-        values[i] = locks != nullptr && locks[i] >= 0 ? (int) locks[i]   // sequencer parameter lock
-                                                       : juce::roundToInt (paramValues[(size_t) i]->load());
+        values[i] = locks != nullptr && locks[i] != p800::kNoLock ? (int) locks[i]   // sequencer parameter lock
+                                                                   : juce::roundToInt (paramValues[(size_t) i]->load());
 
     Poly800Params p;
     poly800_params_default (&p);
     p800::fillCoreParams (p, values);
-    p.master_gain = masterParam->load() * p800::volumeToGain;
-    p.tune_cents = tuneParam->load();
+    p.master_gain = lockedOr (locks, "master", 0.01f, masterParam->load()) * p800::volumeToGain;
+    p.tune_cents = lockedOr (locks, "tune", 1.0f, tuneParam->load());
     return p;
+}
+
+// Everything a step's parameter locks can change: the sound, the effect and the joystick.
+void P800Processor::applyLocks (const int16_t* locks)
+{
+    const int type = juce::roundToInt (lockedOr (locks, "chorusType", 1.0f, chorusTypeParam->load()));
+    engine.setEffect (type, lockedOr (locks, "chorusSpeed", 0.01f, chorusSpeedParam->load()));
+    engine.setParams (currentCoreParams (locks));
+    updatePerformance (locks);
 }
 
 void P800Processor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi)
@@ -126,12 +143,10 @@ void P800Processor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBu
         return;
     }
 
-    engine.setEffect (juce::roundToInt (chorusTypeParam->load()), chorusSpeedParam->load());
     const auto coreParams = currentCoreParams();
     // Keep the playing step's parameter locks for the whole step: they are re-applied at the
     // start of every block, not only when the step begins (in 0.5.0 they lasted one block).
-    engine.setParams (currentCoreParams (player.activeLocks()));
-    updatePerformance();
+    applyLocks (player.activeLocks());
 
     // Key assign. DOUBLE mode (P18 = 2) has 4 voices, WHOLE has 8.
     keys.setMode (juce::roundToInt (keyModeParam->load()));
@@ -187,7 +202,7 @@ void P800Processor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBu
             renderTo (juce::jlimit (pos, numSamples, e.offset));
             if (e.type == p800::SeqEvent::noteOn)       engine.noteOn (e.note, e.velocity);
             else if (e.type == p800::SeqEvent::noteOff) engine.noteOff (e.note);
-            else                                        engine.setParams (currentCoreParams (player.activeLocks()));
+            else                                        applyLocks (player.activeLocks());
         }
     };
 
@@ -207,7 +222,7 @@ void P800Processor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBu
         {
             keys.noteOff (sink, msg.getNoteNumber());
             if (recording && ! player.isRunning() && heldForStepRec > 0 && --heldForStepRec == 0)
-                pushRec ({ 1, 0, 0 }); // all keys up: move to the next step
+                pushRec ({ 1, 0, 0, 0 }); // all keys up: move to the next step
         }
         else if (msg.isAllNotesOff() || msg.isAllSoundOff())
             keys.allNotesOff (sink);
@@ -336,13 +351,30 @@ void P800Processor::recordPlayedNote (int note)
     {
         // Live: quantise to the nearest step.
         const int len = player.getData().pat().length;
-        pushRec ({ 0, (int) (std::llround (player.position()) % len), note });
+        pushRec ({ 0, (int) (std::llround (player.position()) % len), note, 1 });
     }
     else
     {
         // Step record: everything sounding together goes on the selected step.
-        pushRec ({ 0, seqSelectedStep.load(), note });
+        pushRec ({ 0, seqSelectedStep.load(), note, 1 });
     }
+    // Remember where it started, so a held note gets its full length when it is released.
+    if (player.isRunning())
+    {
+        recStartPos[(size_t) note] = player.position();
+        recStartStep[(size_t) note] = (int) (std::llround (player.position()) % player.getData().pat().length);
+    }
+    else recStartPos[(size_t) note] = -1.0;
+}
+
+void P800Processor::recordReleasedNote (int note)
+{
+    const double start = recStartPos[(size_t) note];
+    recStartPos[(size_t) note] = -1.0;
+    if (! seqRecording.load() || ! player.isRunning() || start < 0.0) return;
+    // Live: the note lasts as many steps as it was held (at least one).
+    const int steps = juce::jmax (1, (int) std::llround (player.position() - start));
+    if (steps > 1) pushRec ({ 2, recStartStep[(size_t) note], note, steps });
 }
 
 void P800Processor::pushRec (RecEvent e)
@@ -371,6 +403,8 @@ void P800Processor::timerCallback()
             const int len = d.pat().length;
             if (e.type == 0)
                 d.addNote (juce::jlimit (0, len - 1, e.step), e.note);
+            else if (e.type == 2)
+                d.setLengthOf (juce::jlimit (0, len - 1, e.step), e.note, e.length);
             else
                 seqSelectedStep.store ((seqSelectedStep.load() + 1) % len);
         }
@@ -410,6 +444,7 @@ void P800Processor::getStateInformation (juce::MemoryBlock& dest)
     state.setProperty ("chordRoot", root, nullptr);
     state.setProperty ("presetKey", presets->getCurrentKey(), nullptr);
     state.setProperty ("seq", juce::String (getSeqData().serialise()), nullptr);
+    state.setProperty ("seqLaneHeight", seqLaneHeight.load(), nullptr);
     if (auto xml = state.createXml())
         copyXmlToBinary (*xml, dest);
 }
@@ -428,6 +463,7 @@ void P800Processor::setStateInformation (const void* data, int size)
                     iv[count++] = juce::jlimit (0, 48, t.getIntValue());
             if (count > 0)
                 keys.setChord (iv, count, (int) state.getProperty ("chordRoot", 60));
+            seqLaneHeight.store ((int) state.getProperty ("seqLaneHeight", 80));
             if (state.hasProperty ("seq"))
             {
                 const auto text = state.getProperty ("seq").toString().toStdString();
