@@ -1,0 +1,6 @@
+#!/bin/sh
+# EX-800 was called P-800 up to 0.5.2. Remove the old bundles so hosts do not
+# list the same plugin twice (both share the same plugin IDs).
+rm -rf "/Library/Audio/Plug-Ins/Components/P-800.component" \
+       "/Library/Audio/Plug-Ins/VST3/P-800.vst3"
+exit 0

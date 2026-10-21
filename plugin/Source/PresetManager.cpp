@@ -14,16 +14,28 @@ PresetManager::PresetManager (PresetTarget& t, juce::File rootDir) : target (t),
 
 juce::File PresetManager::defaultRootDir()
 {
-   #if JUCE_MAC
-    return juce::File::getSpecialLocation (juce::File::userHomeDirectory)
-             .getChildFile ("Library/Audio/Presets/Ticco Ross/P-800");
-   #elif JUCE_WINDOWS
-    return juce::File::getSpecialLocation (juce::File::userDocumentsDirectory)
-             .getChildFile ("Ticco Ross/P-800/Presets");
-   #else
-    return juce::File::getSpecialLocation (juce::File::userHomeDirectory)
-             .getChildFile (".local/share/Ticco Ross/P-800/Presets");
-   #endif
+    // EX-800 (named P-800 up to 0.5.2): presets saved under the old name are moved over once.
+    auto dirFor = [] (const char* product)
+    {
+       #if JUCE_MAC
+        return juce::File::getSpecialLocation (juce::File::userHomeDirectory)
+                 .getChildFile ("Library/Audio/Presets/Ticco Ross").getChildFile (product);
+       #elif JUCE_WINDOWS
+        return juce::File::getSpecialLocation (juce::File::userDocumentsDirectory)
+                 .getChildFile ("Ticco Ross").getChildFile (product).getChildFile ("Presets");
+       #else
+        return juce::File::getSpecialLocation (juce::File::userHomeDirectory)
+                 .getChildFile (".local/share/Ticco Ross").getChildFile (product).getChildFile ("Presets");
+       #endif
+    };
+    const auto dir = dirFor ("EX-800"), old = dirFor ("P-800");
+    if (! dir.exists() && old.isDirectory())
+    {
+        dir.getParentDirectory().createDirectory();
+        if (! old.moveFileTo (dir))
+            old.copyDirectoryTo (dir);
+    }
+    return dir;
 }
 
 juce::String PresetManager::legalName (const juce::String& name)

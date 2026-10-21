@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// P-800 preset management: banks of presets, based on Polytwelve's PresetManager.
+// EX-800 preset management: banks of presets, based on Polytwelve's PresetManager.
 //
 //  - "Factory" bank: the 64 original Poly-800 programs (11..88), built in, read-only.
 //  - User banks: one folder each, holding *.p800preset files.
 //  - "Favourites": every preset marked with the star, from any bank.
 //
 // User banks live in:
-//   macOS    ~/Library/Audio/Presets/Ticco Ross/P-800/<bank>
-//   Windows  Documents\Ticco Ross\P-800\Presets\<bank>
-//   Linux    ~/.local/share/Ticco Ross/P-800/Presets/<bank>
+//   macOS    ~/Library/Audio/Presets/Ticco Ross/EX-800/<bank>
+//   Windows  Documents\Ticco Ross\EX-800\Presets\<bank>
+//   Linux    ~/.local/share/Ticco Ross/EX-800/Presets/<bank>
 //
 // Presets in a bank are numbered like the hardware: 11..18, 21..28 ... 88 (64 per
 // number range; more are allowed but have no number). Message thread only, except

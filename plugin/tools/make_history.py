@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Builds plugin/docs/P-800 Update History.pdf (reportlab). Run from the repo root.
+"""Builds plugin/docs/EX-800 Update History.pdf (reportlab). Run from the repo root.
 Add a new entry to HISTORY at every release, together with the manual update."""
 import pathlib
 import re
@@ -13,7 +13,7 @@ from reportlab.lib.units import mm
 from reportlab.platypus import KeepTogether, Paragraph, SimpleDocTemplate, Spacer
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
-OUT = ROOT / "plugin" / "docs" / "P-800 Update History.pdf"
+OUT = ROOT / "plugin" / "docs" / "EX-800 Update History.pdf"
 VERSION = re.search(r"project\(P800 VERSION ([0-9.]+)", (ROOT / "plugin" / "CMakeLists.txt").read_text()).group(1)
 
 ACCENT = colors.HexColor("#c8741c")
@@ -31,8 +31,7 @@ subtitle = ParagraphStyle("subtitle", parent=body, fontSize=11, leading=15, alig
 # (version heading, [ (text, [sub-points]) ... ])  -- items are numbered across the whole history.
 HISTORY = [
     ("0.1.0: First build", [
-        ("The first playable plugin (AU/VST3, then called TRoss 800), wrapped around the ISLA Poly-800 engine. "
-         "It runs the engine at twice the sample rate below 88 kHz so the filter stays stable, and it loads the 64 factory programs.", []),
+        ("The first playable plugin (AU/VST3, then called TRoss 800).", []),
         ("Renamed the plugin to Poly800.", []),
         ("Renamed it again to <b>P-800</b> (manufacturer Ticco Ross).", []),
         ("Added the joystick. X bends pitch with an adjustable bend range, Y up adds vibrato and Y down adds filter wobble. "
@@ -84,6 +83,18 @@ HISTORY = [
             "The manual is updated.",
         ]),
     ]),
+    ("0.6.0: EX-800", [
+        ("Renamed the synth to <b>EX-800</b> (panel, manual, installers and preset folder). "
+         "The installers remove the old P-800 plugin, and saved presets and sessions carry over.", []),
+        ("Sound and playing:", [
+            "Resonance (P42) at 15 now self-oscillates a little while notes sound.",
+            "New <b>BEND RANGE</b> control under the joystick (±1 to ±12 semitones).",
+            "New <b>16 VOICES</b> button: 16 voices in WHOLE mode, 8 in DOUBLE.",
+        ]),
+        ("Sequencer: a pattern change made while playing now waits until the playing pattern ends.", []),
+        ("New <b>ABOUT</b> window with version and contact e-mail (ticcoross@gmail.com).", []),
+        ("The manual is updated.", []),
+    ]),
 ]
 
 
@@ -91,10 +102,10 @@ def build():
     def on_page(c, doc):
         c.setFont("Helvetica", 8)
         c.setFillColor(GREY)
-        c.drawString(18 * mm, 10 * mm, f"P-800 {VERSION} Update History · Ticco Ross")
+        c.drawString(18 * mm, 10 * mm, f"EX-800 {VERSION} Update History · Ticco Ross")
         c.drawRightString(A4[0] - 18 * mm, 10 * mm, str(doc.page))
 
-    story = [Paragraph("P-800 Update History", title), Spacer(1, 4),
+    story = [Paragraph("EX-800 Update History", title), Spacer(1, 4),
              Paragraph(f"Ticco Ross · current version {VERSION}", subtitle), Spacer(1, 10)]
     n = 0
     for heading, items in HISTORY:
@@ -108,7 +119,7 @@ def build():
         "From 0.3.0 on, each version also updated the manual and added tests. "
         "Every build is checked on macOS, Windows and Linux.", body)]
     SimpleDocTemplate(str(OUT), pagesize=A4, leftMargin=18 * mm, rightMargin=18 * mm,
-                      topMargin=18 * mm, bottomMargin=18 * mm, title="P-800 Update History",
+                      topMargin=18 * mm, bottomMargin=18 * mm, title="EX-800 Update History",
                       author="Ticco Ross").build(story, onFirstPage=on_page, onLaterPages=on_page)
     print("wrote", OUT)
 

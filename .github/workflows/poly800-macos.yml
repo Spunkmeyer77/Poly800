@@ -1,5 +1,5 @@
-# Builds the P-800 AU + VST3 (universal binary) on macOS and packages a .pkg.
-name: P-800 macOS build
+# Builds the EX-800 AU + VST3 (universal binary) on macOS and packages a .pkg.
+name: EX-800 macOS build
 
 on:
   push:
@@ -32,16 +32,16 @@ jobs:
           ART=plugin/build/P800_artefacts/Release
           VERSION=$(grep -m1 -oE 'VERSION [0-9.]+' plugin/CMakeLists.txt | cut -d' ' -f2)
           mkdir -p pkgroot/au/Library/Audio/Plug-Ins/Components pkgroot/vst3/Library/Audio/Plug-Ins/VST3 dist
-          cp -R "$ART/AU/P-800.component" pkgroot/au/Library/Audio/Plug-Ins/Components/
-          cp -R "$ART/VST3/P-800.vst3" pkgroot/vst3/Library/Audio/Plug-Ins/VST3/
-          pkgbuild --root pkgroot/au --identifier com.ticcoross.p800.au --version "$VERSION" --install-location / au.pkg
+          cp -R "$ART/AU/EX-800.component" pkgroot/au/Library/Audio/Plug-Ins/Components/
+          cp -R "$ART/VST3/EX-800.vst3" pkgroot/vst3/Library/Audio/Plug-Ins/VST3/
+          pkgbuild --root pkgroot/au --identifier com.ticcoross.p800.au --version "$VERSION" --install-location / --scripts plugin/installer/macos/scripts au.pkg
           pkgbuild --root pkgroot/vst3 --identifier com.ticcoross.p800.vst3 --version "$VERSION" --install-location / vst3.pkg
-          productbuild --package au.pkg --package vst3.pkg "dist/P-800 $VERSION.pkg"
+          productbuild --package au.pkg --package vst3.pkg "dist/EX-800 $VERSION.pkg"
           # Ship the PDF manual alongside the installer when one exists.
           if ls plugin/docs/*.pdf >/dev/null 2>&1; then cp plugin/docs/*.pdf dist/; fi
 
       - name: Upload
         uses: actions/upload-artifact@v4
         with:
-          name: P-800-macOS
+          name: EX-800-macOS
           path: dist/*

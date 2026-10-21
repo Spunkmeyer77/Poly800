@@ -15,7 +15,7 @@ namespace p800
 class KeyLayer
 {
 public:
-    static constexpr int maxChord = 8; // the Poly-800 has 8 voices
+    static constexpr int maxChord = 16; // EX-800: up to 16 voices
 
     struct Sink
     {

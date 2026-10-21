@@ -264,6 +264,44 @@ int main()
         check (h.pat().steps[0].noteCount() == 2, "HOLD: notes played one by one record together");
     }
 
+    { // 0.6.0: a pattern change while playing waits for the end of the playing pattern
+        SeqPlayer pl; pl.prepare (sr);
+        SeqData d; d.settings.hostSync = false; d.settings.bpm = 120;
+        d.addNote (0, 60); d.addNote (8, 60);        // A: steps 1 and 9
+        d.current = 1; d.addNote (0, 72); d.addNote (8, 72); // B
+        d.current = 0;
+        pl.setData (d);
+        SeqEvent ev[SeqPlayer::maxEvents];
+        std::vector<Rec> r;
+        long long s = 0;
+        auto runFor = [&] (long long samples)
+        {
+            for (long long end = s + samples; s < end; s += 256)
+            {
+                const int c = pl.process (256, {}, true, ev);
+                for (int i = 0; i < c; ++i) r.push_back ({ s + ev[i].offset, ev[i] });
+            }
+        };
+        runFor (6000 * 4);                            // into step 5 of A
+        d.current = 1; pl.setData (d);                // choose B
+        check (pl.changeQueued() && pl.playingPattern() == 0, "a change while playing is queued, A keeps playing");
+        runFor (6000 * 12 - 6000 * 4 + 6000 * 4 + 100); // to just past the end of A
+        long long firstB = -1, lastA = -1;
+        for (auto& x : r)
+            if (x.e.type == SeqEvent::noteOn)
+            {
+                if (x.e.note == 72 && firstB < 0) firstB = x.sample;
+                if (x.e.note == 60) lastA = x.sample;
+            }
+        check (lastA >= 6000 * 8 - 300 && lastA <= 6000 * 8 + 300, "A finishes its pattern (its step 9 still plays)");
+        check (firstB >= 6000 * 16 - 300 && firstB <= 6000 * 16 + 300, "B starts on its step 1 when A ends");
+        check (! pl.changeQueued() && pl.playingPattern() == 1 && pl.currentStep() == 0, "B is now playing from step 1");
+
+        SeqPlayer stopped; stopped.prepare (sr);
+        d.current = 0; stopped.setData (d); d.current = 2; stopped.setData (d);
+        check (stopped.playingPattern() == 2 && ! stopped.changeQueued(), "stopped: a change is immediate");
+    }
+
     std::printf (fails ? "\n%d failure(s)\n" : "\nall sequencer checks pass\n", fails);
     return fails ? 1 : 0;
 }

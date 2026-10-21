@@ -63,6 +63,7 @@ public:
     void setSeqRun (bool run)           { seqRun.store (run); }
     bool getSeqRun() const              { return seqRun.load(); }
     int  getSeqPlayStep() const         { return seqPlayStep.load(); } // -1 when stopped
+    int  getSeqPlayingPattern() const   { return seqPlayingPattern.load(); } // -1 when stopped
     void setSeqRecording (bool rec)     { seqRecording.store (rec); heldForStepRec = 0; }
     bool getSeqRecording() const        { return seqRecording.load(); }
     void setSeqSelectedStep (int step)  { seqSelectedStep.store (step); }
@@ -89,7 +90,7 @@ private:
     p800::SeqPlayer player;
     std::array<p800::SeqEvent, p800::SeqPlayer::maxEvents> seqEvents {};
     std::atomic<bool> seqRun { false }, seqRecording { false };
-    std::atomic<int> seqPlayStep { -1 }, seqSelectedStep { 0 };
+    std::atomic<int> seqPlayStep { -1 }, seqSelectedStep { 0 }, seqPlayingPattern { -1 };
     std::atomic<double> hostBpm { 0.0 };
     std::atomic<int> seqLaneHeight { 80 };   // the sequencer's lower lane, resizable by the user
     int heldForStepRec = 0;             // audio thread: keys down while step recording
@@ -108,6 +109,7 @@ private:
     std::atomic<float>* joyXParam = nullptr;
     std::atomic<float>* joyYParam = nullptr;
     std::atomic<float>* bendRangeParam = nullptr;
+    std::atomic<float>* voices16Param = nullptr;
     std::atomic<float>* holdParam = nullptr;
     std::atomic<float>* keyModeParam = nullptr;
     std::atomic<float>* chorusTypeParam = nullptr;

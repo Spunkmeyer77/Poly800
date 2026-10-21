@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-# P-800 - AU/VST3 wrapper around the ISLA Poly-800 core.
+# EX-800 (formerly P-800) - AU/VST3 wrapper around the ISLA Poly-800 core.
 cmake_minimum_required(VERSION 3.22)
-project(P800 VERSION 0.5.2 LANGUAGES C CXX)
+project(P800 VERSION 0.6.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_OSX_DEPLOYMENT_TARGET "11.0" CACHE STRING "")
@@ -28,7 +28,7 @@ endif()
 
 juce_add_plugin(P800
     COMPANY_NAME "Ticco Ross"
-    PRODUCT_NAME "P-800"
+    PRODUCT_NAME "EX-800"
     BUNDLE_ID com.ticcoross.p800
     PLUGIN_MANUFACTURER_CODE Tcro
     PLUGIN_CODE Tp80

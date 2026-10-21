@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Renders the P-800 panel to a PNG without a host or window, for checking the
+// Renders the EX-800 panel to a PNG without a host or window, for checking the
 // look. Usage: render_panel out.png [scale] [params|seq16|seq32]
 #include <juce_graphics/juce_graphics.h>
 #include "PanelView.h"
@@ -61,6 +61,8 @@ int main (int argc, char** argv)
     if (mode == "seq32") fillSequencerExample (s.seq, 32);
     s.seq.laneHeight = laneHeight;
     s.seq.recording = mode.startsWith ("seq");
+    s.seq.playingPattern = mode.startsWith ("seq") ? 0 : -1;
+    s.showAbout = mode == "about";
 
     juce::Image img (juce::Image::RGB, juce::roundToInt (p800::PanelView::width * scale),
                      juce::roundToInt (p800::PanelView::height * scale), true);

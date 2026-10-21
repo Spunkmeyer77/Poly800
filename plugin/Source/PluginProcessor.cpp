@@ -20,6 +20,7 @@ P800Processor::P800Processor()
     joyXParam = apvts.getRawParameterValue ("joyX");
     joyYParam = apvts.getRawParameterValue ("joyY");
     bendRangeParam = apvts.getRawParameterValue ("bendRange");
+    voices16Param = apvts.getRawParameterValue ("voices16");
     holdParam = apvts.getRawParameterValue ("hold");
     keyModeParam = apvts.getRawParameterValue ("keyMode");
     chorusTypeParam = apvts.getRawParameterValue ("chorusType");
@@ -53,6 +54,10 @@ juce::AudioProcessorValueTreeState::ParameterLayout P800Processor::createLayout(
     layout.add (std::make_unique<juce::AudioParameterInt> (
         juce::ParameterID { "bendRange", 1 }, "Bend Range", 1, 12, 2,
         juce::AudioParameterIntAttributes().withLabel ("st")));
+
+    // EX-800: double the polyphony - 16 voices in WHOLE mode, 8 in DOUBLE.
+    layout.add (std::make_unique<juce::AudioParameterBool> (
+        juce::ParameterID { "voices16", 1 }, "16 Voices", false));
 
     // Key assign: POLY or CHORD (chord memory, ported from Polytwelve), plus HOLD.
     layout.add (std::make_unique<juce::AudioParameterChoice> (
@@ -148,10 +153,12 @@ void P800Processor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBu
     // start of every block, not only when the step begins (in 0.5.0 they lasted one block).
     applyLocks (player.activeLocks());
 
-    // Key assign. DOUBLE mode (P18 = 2) has 4 voices, WHOLE has 8.
+    // Key assign. DOUBLE mode (P18 = 2) has 4 voices, WHOLE has 8; "16 Voices" doubles both.
+    const bool sixteen = voices16Param->load() > 0.5f;
+    engine.setVoiceCount (sixteen);
     keys.setMode (juce::roundToInt (keyModeParam->load()));
     keys.setHold (holdParam->load() > 0.5f || sustainPedal);
-    keys.setVoiceLimit (coreParams.dco_mode == 2 ? 4 : 8);
+    keys.setVoiceLimit ((coreParams.dco_mode == 2 ? 4 : 8) * (sixteen ? 2 : 1));
     keys.update (sink);
 
     // Sequencer: pick up edits, read the host transport, schedule this block's steps.
@@ -247,6 +254,7 @@ void P800Processor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBu
     runSeqUntil (numSamples);
     renderTo (numSamples);
     seqPlayStep.store (player.currentStep());
+    seqPlayingPattern.store (player.isRunning() ? player.playingPattern() : -1);
 
     for (int ch = 2; ch < buffer.getNumChannels(); ++ch)
         buffer.clear (ch, 0, numSamples);
@@ -350,8 +358,7 @@ void P800Processor::recordPlayedNote (int note)
     if (player.isRunning())
     {
         // Live: quantise to the nearest step.
-        const int len = player.getData().pat().length;
-        pushRec ({ 0, (int) (std::llround (player.position()) % len), note, 1 });
+        pushRec ({ 0, player.stepAt (player.position()), note, 1 });
     }
     else
     {
@@ -362,7 +369,7 @@ void P800Processor::recordPlayedNote (int note)
     if (player.isRunning())
     {
         recStartPos[(size_t) note] = player.position();
-        recStartStep[(size_t) note] = (int) (std::llround (player.position()) % player.getData().pat().length);
+        recStartStep[(size_t) note] = player.stepAt (player.position());
     }
     else recStartPos[(size_t) note] = -1.0;
 }

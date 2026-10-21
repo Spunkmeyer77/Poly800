@@ -482,6 +482,9 @@ void poly800_core_render(
     /* One-pole smoothing of the joystick bend, ~5 ms time constant. */
     const float bend_coef =
         1.0f - expf(-1.0f / (0.005f * (float)core->sample_rate));
+    /* Resonance boost gate (see shared_filter_tick), ~20 ms. */
+    const float gate_coef =
+        1.0f - expf(-1.0f / (0.02f * (float)core->sample_rate));
 
     for (uint32_t frame = 0; frame < nframes; ++frame) {
         float mg_dco_norm;
@@ -504,11 +507,13 @@ void poly800_core_render(
 
         float oscillator_bus = 0.0f;
         int highest_died = 0;
+        int any_active = 0;
 
         for (int i = 0; i < limit; ++i) {
             Voice* voice = &core->voices[i];
             if (!voice->active)
                 continue;
+            any_active = 1;
 
             const float env1 = env_tick(&voice->deg1, &core->derived.deg1);
             oscillator_bus += render_dco(
@@ -539,6 +544,8 @@ void poly800_core_render(
 
         if (highest_died)
             highest = highest_sounding_note(core);
+
+        core->reso_gate += ((any_active ? 1.0f : 0.0f) - core->reso_gate) * gate_coef;
 
         const float env3 = env_tick(&core->deg3, &core->derived.deg3);
         float mixed = oscillator_bus * P800_OSC_BUS_GAIN;
@@ -594,4 +601,16 @@ void poly800_core_set_joystick_mod(
         return;
     core->joy_dco = isfinite(dco_amount) ? clampf(dco_amount, 0.0f, 1.0f) : 0.0f;
     core->joy_vcf = isfinite(vcf_amount) ? clampf(vcf_amount, 0.0f, 1.0f) : 0.0f;
+}
+
+void poly800_core_set_voice_count(Poly800Core* core, int sixteen)
+{
+    if (!core)
+        return;
+    const int doubled = sixteen ? 1 : 0;
+    if (doubled == core->voices_doubled)
+        return;
+    /* Same as a WHOLE/DOUBLE change: start from silence. */
+    poly800_core_reset(core);
+    core->voices_doubled = doubled;
 }

@@ -24,6 +24,7 @@ public:
         factor = hostRate < 88000.0 ? 2 : 1;
         core = poly800_core_create (hostRate * factor);
         setPerformance (perfBend, perfDco, perfVcf);
+        setVoiceCount (voices16);
         maxFrames = std::max (1, maxBlock);
         workL.assign ((size_t) (maxFrames * factor), 0.0f);
         workR.assign ((size_t) (maxFrames * factor), 0.0f);
@@ -43,6 +44,13 @@ public:
     }
 
     bool isPrepared() const { return core != nullptr; }
+
+    // EX-800: 16 voices (8 in DOUBLE mode) instead of 8 (4). Kept across prepare().
+    void setVoiceCount (bool sixteen)
+    {
+        voices16 = sixteen;
+        if (core) poly800_core_set_voice_count (core, sixteen ? 1 : 0);
+    }
     int oversampling() const { return factor; }
 
     void setParams (const Poly800Params& in)
@@ -139,6 +147,7 @@ private:
     Decimator2x decL, decR;
     Poly800Params last {};
     bool haveParams = false;
+    bool voices16 = false;
     float perfBend = 0.0f, perfDco = 0.0f, perfVcf = 0.0f;
     PolyEffects fx;
     int effectType = fxChorus;

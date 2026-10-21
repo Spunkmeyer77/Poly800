@@ -1,5 +1,5 @@
-# Builds P-800 for Windows (VST3 + Inno Setup installer) and Linux (VST3 + LV2 tarball).
-name: P-800 Windows and Linux builds
+# Builds EX-800 for Windows (VST3 + Inno Setup installer) and Linux (VST3 + LV2 tarball).
+name: EX-800 Windows and Linux builds
 
 on:
   push:
@@ -32,13 +32,13 @@ jobs:
           $iscc = (Get-Command iscc -ErrorAction SilentlyContinue).Source
           if (-not $iscc) { $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" }
           New-Item -ItemType Directory -Force dist | Out-Null
-          & $iscc "/DAppVersion=$version" "/DSrcDir=$env:GITHUB_WORKSPACE" plugin\installer\windows\P-800.iss
+          & $iscc "/DAppVersion=$version" "/DSrcDir=$env:GITHUB_WORKSPACE" plugin\installer\windows\EX-800.iss
           Copy-Item "plugin\docs\*.pdf" dist\
 
       - name: Upload
         uses: actions/upload-artifact@v4
         with:
-          name: P-800-Windows
+          name: EX-800-Windows
           path: dist/*
 
   linux:
@@ -70,9 +70,9 @@ jobs:
           VERSION=$(grep -m1 -oE 'VERSION [0-9.]+' plugin/CMakeLists.txt | cut -d' ' -f2)
           ART=plugin/build/P800_artefacts/Release
           [ -d "$ART" ] || ART=plugin/build/P800_artefacts
-          PKG="P-800 $VERSION Linux x86_64"
+          PKG="EX-800 $VERSION Linux x86_64"
           mkdir -p "dist/$PKG"
-          cp -R "$ART/VST3/P-800.vst3" "$ART/LV2/P-800.lv2" "dist/$PKG/"
+          cp -R "$ART/VST3/EX-800.vst3" "$ART/LV2/EX-800.lv2" "dist/$PKG/"
           cp plugin/installer/linux/install.sh plugin/docs/*.pdf LICENSE "dist/$PKG/"
           chmod +x "dist/$PKG/install.sh"
           tar -C dist -czf "dist/$PKG.tar.gz" "$PKG"
@@ -82,5 +82,5 @@ jobs:
       - name: Upload
         uses: actions/upload-artifact@v4
         with:
-          name: P-800-Linux
+          name: EX-800-Linux
           path: dist/*

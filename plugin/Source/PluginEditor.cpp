@@ -85,6 +85,10 @@ void P800Editor::refreshState()
     s.joyY = getReal ("joyY");
     s.hold = getReal ("hold") > 0.5f;
     s.bendRange = juce::roundToInt (getReal ("bendRange"));
+    s.voices16 = getReal ("voices16") > 0.5f;
+    s.seq.playingPattern = processor.getSeqPlayingPattern();
+    s.seq.blink = (juce::Time::getMillisecondCounter() / 250) % 2 == 0;
+    const bool queued = s.seq.playingPattern >= 0 && s.seq.playingPattern != s.seq.data.current;
     s.chordMode = getReal ("keyMode") > 0.5f;
     s.chorusType = juce::roundToInt (getReal ("chorusType"));
     s.chorusSpeed = getReal ("chorusSpeed");
@@ -107,7 +111,8 @@ void P800Editor::refreshState()
                       || seqChanged || s.seq.playing != state.seq.playing || s.seq.recording != state.seq.recording
                       || s.seq.playStep != state.seq.playStep || s.seq.selectedStep != state.seq.selectedStep
                       || juce::roundToInt (s.seq.hostBpm) != juce::roundToInt (state.seq.hostBpm)
-                      || s.seq.laneHeight != state.seq.laneHeight;
+                      || s.seq.laneHeight != state.seq.laneHeight || s.voices16 != state.voices16
+                      || s.seq.playingPattern != state.seq.playingPattern || (queued && s.seq.blink != state.seq.blink);
     state = s;
     if (changed)
         repaint();
@@ -232,6 +237,14 @@ void P800Editor::mouseDown (const juce::MouseEvent& e)
             setReal (paramId (i), state.values[(size_t) i] == 2 ? 1.0f : 2.0f);
             break;
         }
+        case HitKind::voices16: setReal ("voices16", state.voices16 ? 0.0f : 1.0f); break;
+        case HitKind::bendDown: setReal ("bendRange", (float) juce::jmax (1, state.bendRange - 1)); break;
+        case HitKind::bendUp:   setReal ("bendRange", (float) juce::jmin (12, state.bendRange + 1)); break;
+        case HitKind::about:      state.showAbout = true; repaint(); break;
+        case HitKind::aboutClose: state.showAbout = false; repaint(); break;
+        case HitKind::aboutEmail:
+            juce::URL ("mailto:ticcoross@gmail.com?subject=EX-800%20" + state.version).launchInDefaultBrowser();
+            break;
         case HitKind::chorus:
         {
             const int i = p800::PanelView::indexOfParam (48);
@@ -288,8 +301,10 @@ void P800Editor::mouseDrag (const juce::MouseEvent& e)
 
 void P800Editor::mouseMove (const juce::MouseEvent& e)
 {
-    const bool overSplitter = view.hitTest (toDesign (e.position), state).kind == HitKind::seqSplitter;
-    setMouseCursor (overSplitter ? juce::MouseCursor::UpDownResizeCursor : juce::MouseCursor::NormalCursor);
+    const auto kind = view.hitTest (toDesign (e.position), state).kind;
+    setMouseCursor (kind == HitKind::seqSplitter ? juce::MouseCursor::UpDownResizeCursor
+                    : kind == HitKind::aboutEmail ? juce::MouseCursor::PointingHandCursor
+                                                  : juce::MouseCursor::NormalCursor);
 }
 
 void P800Editor::mouseUp (const juce::MouseEvent&)
@@ -532,7 +547,7 @@ void P800Editor::askDeleteBank()
 
 void P800Editor::openPresetFile()
 {
-    chooser = std::make_unique<juce::FileChooser> ("Open P-800 preset", processor.getPresetManager().getRootDir(),
+    chooser = std::make_unique<juce::FileChooser> ("Open EX-800 preset", processor.getPresetManager().getRootDir(),
                                                    juce::String ("*") + p800::PresetManager::extension);
     juce::Component::SafePointer<P800Editor> safe (this);
     chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,

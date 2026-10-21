@@ -24,6 +24,8 @@ struct SeqView
     int selectedStep = 0;
     double hostBpm = 0.0;            // shown when synced to the host, 0 if unknown
     int laneHeight = 80;             // the lower lane (PROB / GATE / P-LOCK), resizable by dragging
+    int playingPattern = -1;         // pattern playing now (-1 stopped); differs from data.current while a change is queued
+    bool blink = false;              // blink phase for a queued pattern
     SeqData data;
 };
 
@@ -41,12 +43,14 @@ struct PanelState
     float joyX = 0.0f, joyY = 0.0f;         // -1..1 (Y up = +1)
     bool hold = false;
     int bendRange = 2;
+    bool voices16 = false;                  // EX-800: 16 voices (8 in DOUBLE)
+    bool showAbout = false;                 // the ABOUT window is open
     bool chordMode = false;
     juce::String chordName { "Cm" };        // stored chord, e.g. "Cm"
     juce::String chordNotes { "C3 Eb3 G3" };
     int chorusType = 0;                     // effect: 0 Chorus, 1 Phaser, 2 Ensemble
     float chorusSpeed = 0.4f;               // 0..1
-    juce::String version { "0.5.2" };       // set from JucePlugin_VersionString by the editor
+    juce::String version { "0.6.0" };       // set from JucePlugin_VersionString by the editor
     // Presets
     juce::String bankName { "Factory" };
     juce::String presetName { "11 Strings" };
@@ -64,7 +68,8 @@ enum class HitKind
     seqToggle, seqPlay,
     seqLength, seqPattern, seqRate, seqSwing, seqGate, seqSync, seqBpm, seqOctUp, seqOctDown,
     seqRec, seqCopy, seqClear, seqStepNumber, seqGrid, seqLaneTab, seqLane, seqLockParam,
-    seqTie, seqRest, seqSplitter
+    seqTie, seqRest, seqSplitter,
+    voices16, bendDown, bendUp, about, aboutClose, aboutEmail
 };
 
 struct Hit
@@ -143,7 +148,10 @@ private:
     juce::Rectangle<float> bankR, presetPrevR, presetNameR, presetNextR, saveR, newBankR, deleteR, favR;
     void paintPresets (juce::Graphics&, const PanelState&) const;
     void paintSequencer (juce::Graphics&, const PanelState&) const;
-    juce::Rectangle<float> seqBtnR, playBtnR;
+    juce::Rectangle<float> seqBtnR, playBtnR, voices16R, bendDownR, bendUpR, bendValueR, aboutR;
+    void paintAbout (juce::Graphics&, const PanelState&) const;
+    static juce::Rectangle<float> aboutBox()      { return { 420, 170, 600, 440 }; }
+    static juce::Rectangle<float> aboutEmailR()   { return { 520, 518, 400, 26 }; }
     std::array<juce::Rectangle<float>, 9> keyR {}; // 7 8 P / 4 5 6 / 1 2 3
     std::array<int, 9> keyDigit {};
     juce::Image metal; // pre-rendered brushed metal

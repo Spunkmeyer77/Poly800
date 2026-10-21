@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Builds plugin/docs/P-800 Manual.pdf (reportlab). Run from the repo root."""
+"""Builds plugin/docs/EX-800 Manual.pdf (reportlab). Run from the repo root."""
 import csv
 import pathlib
 import re
@@ -15,7 +15,7 @@ from reportlab.platypus import (Image, KeepTogether, PageBreak, Paragraph,
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 DOCS = ROOT / "plugin" / "docs"
-OUT = DOCS / "P-800 Manual.pdf"
+OUT = DOCS / "EX-800 Manual.pdf"
 # Version comes from plugin/CMakeLists.txt (project VERSION), the single source of truth.
 VERSION = re.search(r"project\(P800 VERSION ([0-9.]+)", (ROOT / "plugin" / "CMakeLists.txt").read_text()).group(1)
 
@@ -62,7 +62,7 @@ PARAMS = [
         ("12", "Waveform", "1-2", "1 square. 2 the stepped saw-like mix (footages weighted 1, 1/2, 1/4, 1/8)."),
         ("13-16", "16' / 8' / 4' / 2'", "0-1", "Switch each square-wave footage on or off. Combine them to build the tone."),
         ("17", "Level", "0-31", "DCO 1 volume."),
-        ("18", "Mode", "1-2", "1 WHOLE: 8 voices, DCO 1 only. 2 DOUBLE: 4 voices, DCO 1 + DCO 2."),
+        ("18", "Mode", "1-2", "1 WHOLE: 8 voices (16 with 16 VOICES on), DCO 1 only. 2 DOUBLE: 4 voices (8), DCO 1 + DCO 2."),
     ]),
     ("DCO 2 (heard in DOUBLE mode)", [
         ("21", "Octave", "1-3", "Pitch register of DCO 2."),
@@ -77,7 +77,7 @@ PARAMS = [
     ]),
     ("VCF (one filter shared by all voices)", [
         ("41", "Cutoff", "0-99", "Filter cutoff frequency."),
-        ("42", "Resonance", "0-15", "Emphasis at the cutoff. Very high settings ring and whistle."),
+        ("42", "Resonance", "0-15", "Emphasis at the cutoff. Very high settings ring and whistle; at 15 the filter self-oscillates while notes sound."),
         ("43", "Keyboard track", "0-2", "0 off, 1 half, 2 full: the cutoff rises with the highest note played (full: one octave per octave, from middle C)."),
         ("44", "EG polarity", "1-2", "1 inverted, 2 normal direction of the DEG 3 sweep."),
         ("45", "EG intensity", "0-15", "How far DEG 3 sweeps the cutoff."),
@@ -110,42 +110,42 @@ def build():
         c.line(18 * mm, 14 * mm, A4[0] - 18 * mm, 14 * mm)
         c.setFont("Helvetica", 8)
         c.setFillColor(GREY)
-        c.drawString(18 * mm, 9 * mm, f"P-800 v{VERSION}  ·  Ticco Ross")
+        c.drawString(18 * mm, 9 * mm, f"EX-800 v{VERSION}  ·  Ticco Ross")
         c.drawRightString(A4[0] - 18 * mm, 9 * mm, str(doc.page))
         c.restoreState()
 
     doc = SimpleDocTemplate(str(OUT), pagesize=A4, leftMargin=18 * mm, rightMargin=18 * mm,
                             topMargin=18 * mm, bottomMargin=20 * mm,
-                            title="P-800 Manual", author="Ticco Ross", subject="P-800 AU/VST3 synthesizer")
+                            title="EX-800 Manual", author="Ticco Ross", subject="EX-800 AU/VST3 synthesizer")
     W = A4[0] - 36 * mm
     s = []
 
     # Cover.
     s += [Spacer(1, 40 * mm), Paragraph("TICCO ROSS", brand), Spacer(1, 4 * mm),
-          Paragraph("P-800", title), Spacer(1, 3 * mm),
-          Paragraph("8-voice programmable synthesizer · AU / VST3", subtitle),
+          Paragraph("EX-800", title), Spacer(1, 3 * mm),
+          Paragraph("8/16-voice programmable synthesizer · AU / VST3", subtitle),
           Paragraph(f"User manual · version {VERSION}", subtitle), Spacer(1, 14 * mm)]
     panel = DOCS / "panel.png"
     if panel.exists():
         s.append(Image(str(panel), width=W, height=W * 800 / 1440))
     s += [Spacer(1, 12 * mm), Paragraph(
-        "A reconstruction of a classic 1980s digital-analog hybrid: eight voices of stacked square-wave "
+        "A reconstruction of a classic 1980s digital-analog hybrid: eight (or sixteen) voices of stacked square-wave "
         "footages, three six-stage envelopes, one shared resonant filter, and stereo chorus, phaser and ensemble.", subtitle), PageBreak()]
 
     # 1. Getting started.
     s += [Paragraph("1. Getting started", h1), Paragraph("Installing", h2)]
     s += bullets([
-        "Run the <b>P-800 .pkg</b> installer. It installs the Audio Unit to <i>/Library/Audio/Plug-Ins/Components</i> "
+        "Run the <b>EX-800 .pkg</b> installer. It installs the Audio Unit to <i>/Library/Audio/Plug-Ins/Components</i> "
         "and the VST3 to <i>/Library/Audio/Plug-Ins/VST3</i>.",
         "The installer is not yet signed by Apple. If macOS blocks it, right-click the .pkg and choose <b>Open</b>, "
         "or allow it under <b>System Settings › Privacy &amp; Security</b>.",
-        "In Ableton Live, P-800 appears under <b>Plug-ins › Audio Units › Ticco Ross</b> (or VST3). "
+        "In Ableton Live, EX-800 appears under <b>Plug-ins › Audio Units › Ticco Ross</b> (or VST3). "
         "Rescan plug-ins if it does not show up.",
-        "P-800 runs at any sample rate. Below 88 kHz it runs its engine at twice the host rate internally, so it "
+        "EX-800 runs at any sample rate. Below 88 kHz it runs its engine at twice the host rate internally, so it "
         "sounds the same at 44.1, 48 and 96 kHz.",
     ])
     s += [Paragraph("First sounds", h2), Paragraph(
-        "P-800 opens on factory program <b>11 Strings</b>. Step through the 64 factory programs with the "
+        "EX-800 opens on factory program <b>11 Strings</b>. Step through the 64 factory programs with the "
         "<b>&lt; PROG</b> and <b>PROG &gt;</b> buttons under the display, from your host's preset menu, or by "
         "typing a program number on the keypad (section 3).", body)]
 
@@ -157,13 +157,15 @@ def build():
     s.append(table([
         ["Section", "Controls"],
         ["Joystick / Tune", "<b>Tune</b> slider (±100 cents, double-click to reset). <b>Joystick</b>: left/right bends pitch, "
-                            "up adds vibrato (MG to DCO), down adds filter wobble (MG to VCF). It springs back when released."],
+                            "up adds vibrato (MG to DCO), down adds filter wobble (MG to VCF). It springs back when released. "
+                            "<b>BEND RANGE</b> &lt; / &gt; under it sets how far it bends (±1 to ±12 semitones)."],
         ["Volume", "Master output level."],
         ["Key assign", "<b>POLY</b>: normal playing. <b>CHORD</b>: chord memory, each key plays a stored chord (section 4). "
                        "<b>HOLD</b>: notes keep sounding after you let go (the sustain pedal does the same). "
                        "<b>CHORD MEMORY</b> stores the keys you are holding as the chord."],
-        ["Programmer", "LED display (program, parameter, value), keypad, PROG/PARA key, <b>DOWN</b> / <b>UP</b>."],
-        ["Performance / Effects", "<b>VOICES</b> switch (8 voices WHOLE / 4 voices DOUBLE, same as P18), <b>EFFECT</b> on/off (P48), "
+        ["Programmer", "LED display (program, parameter, value), keypad, PROG/PARA key, <b>DOWN</b> / <b>UP</b>. "
+                       "<b>ABOUT</b> (or a click on the EX-800 name) shows the version and contact details."],
+        ["Performance / Effects", "<b>VOICES</b> switch (8 voices WHOLE / 4 voices DOUBLE, same as P18), <b>16 VOICES</b> (doubles the polyphony: 16 WHOLE / 8 DOUBLE), <b>EFFECT</b> on/off (P48), "
                                   "effect <b>TYPE</b> (Chorus, Phaser or Ensemble) and the <b>SPEED</b> slider (chorus or phaser rate, or ensemble intensity)."],
         ["Presets", "<b>BANK</b> (click to choose a bank), the preset name (click for the bank's list), "
                     "<b>&lt;</b> / <b>&gt;</b> to step through it, <b>SAVE</b>, <b>NEW BANK</b>, <b>DELETE</b> and the "
@@ -176,7 +178,7 @@ def build():
 
     # 3. Editing.
     s += [PageBreak(), Paragraph("3. Editing sounds", h1), Paragraph(
-        "The original instrument has no knobs: you pick a parameter by number and change its value. P-800 keeps that "
+        "The original instrument has no knobs: you pick a parameter by number and change its value. EX-800 keeps that "
         "workflow and adds direct mouse editing on the chart. All methods change the same parameters.", body),
         Paragraph("On the chart", h2)]
     s += bullets([
@@ -193,12 +195,13 @@ def build():
     ])
     s += [Paragraph("Saving your sounds", h2), Paragraph(
         "Your edits are stored with your Live set like any plug-in. To keep a sound for other projects, save it as a "
-        "P-800 preset (section 4, Presets and banks).", body)]
+        "EX-800 preset (section 4, Presets and banks).", body)]
 
     # 4. Playing.
     s += [Paragraph("4. Playing", h1), Paragraph("Joystick and controllers", h2)]
     s += bullets([
-        "<b>Joystick X</b> bends pitch by up to ±<b>Bend Range</b> semitones (1-12, default 2; set it from your host's parameter list).",
+        "<b>Joystick X</b> bends pitch by up to ±<b>Bend Range</b> semitones: 1-12, default 2. Set it with the <b>BEND RANGE</b> "
+        "&lt; / &gt; buttons under the joystick (it is also a host parameter, and is saved in presets).",
         "<b>Joystick up</b> adds MG vibrato to the DCOs; <b>down</b> adds MG movement to the filter. Both add to the "
         "program's own MG depths (P83/P84) and follow the MG speed (P81).",
         "Your keyboard's <b>pitch wheel</b> adds to joystick X, and its <b>mod wheel</b> (CC1) works like pushing the joystick up.",
@@ -224,8 +227,8 @@ def build():
         "The <b>star</b> adds or removes the current preset from Favourites.",
     ])
     s += [Paragraph(
-        "Preset files (.p800preset) are kept in one folder per bank. macOS: <i>~/Library/Audio/Presets/Ticco Ross/P-800</i>. "
-        "Windows: <i>Documents\\Ticco Ross\\P-800\\Presets</i>. Linux: <i>~/.local/share/Ticco Ross/P-800/Presets</i>. "
+        "Preset files (.p800preset) are kept in one folder per bank. macOS: <i>~/Library/Audio/Presets/Ticco Ross/EX-800</i>. "
+        "Windows: <i>Documents\\Ticco Ross\\EX-800\\Presets</i>. Linux: <i>~/.local/share/Ticco Ross/EX-800/Presets</i>. Presets saved by P-800 (the earlier name) are moved there automatically. "
         "Copy a bank folder there to share it.", body)]
     s += [Paragraph("Chord memory", h2), Paragraph(
         "Like the original's chord memory, CHORD mode plays a whole stored chord from a single key. It works the same "
@@ -238,11 +241,12 @@ def build():
         "it and the chord returns to the key still held.",
         "The stored chord and its name appear in the top strip, and it is saved with your session. Pressing CHORD "
         "with fewer than two keys held keeps the previous chord.",
-        "A chord can have up to 8 notes in WHOLE mode; in DOUBLE mode (4 voices) its lowest 4 notes play.",
+        "A chord can have as many notes as there are voices: 8 in WHOLE mode, 4 in DOUBLE (16 and 8 with 16 VOICES on); "
+        "extra notes are dropped from the top.",
         "Press <b>POLY</b> to go back to normal playing (POLY also switches HOLD off).",
     ])
     s += [Paragraph("Effects", h2), Paragraph(
-        "P-800 has the same three stereo effects as Polytwelve. P48 or the EFFECT switch turns the effect on and off; "
+        "EX-800 has the same three stereo effects as Polytwelve. P48 or the EFFECT switch turns the effect on and off; "
         "<b>TYPE</b> chooses it:", body)]
     s += bullets([
         "<b>Chorus</b> (default): a BBD-style stereo chorus. SPEED sets its rate, about 0.1 to 4 Hz.",
@@ -251,7 +255,8 @@ def build():
     ])
     s += [Paragraph("Voices and the shared filter", h2), Paragraph(
         "WHOLE mode gives 8 voices with DCO 1 only; DOUBLE mode gives 4 voices, each with DCO 1 and DCO 2 for fatter, "
-        "detuned or interval sounds. All voices go through <b>one shared filter</b>, as on the original, so a new note "
+        "detuned or interval sounds. <b>16 VOICES</b> doubles both: 16 voices in WHOLE mode, 8 in DOUBLE (the VOICES "
+        "switch labels change to show it). Changing it silences the notes sounding. All voices go through <b>one shared filter</b>, as on the original, so a new note "
         "can retrigger the filter envelope for chords already sounding (see P46 Trigger). Keyboard tracking follows the "
         "highest note held.", body)]
 
@@ -268,7 +273,9 @@ def build():
     s += [Paragraph("Top bar", h2)]
     s += bullets([
         "<b>LENGTH</b> 16 or 32 steps. Going from 16 to 32 with an empty second half copies the first half into it.",
-        "<b>PATTERN</b> A to H. Patterns that hold something read brighter. Switching pattern while playing carries on from the same step.",
+        "<b>PATTERN</b> A to H. Patterns that hold something read brighter. While the sequencer is stopped a new pattern is "
+        "chosen at once. While it plays, the change is <b>queued</b>: the chosen pattern blinks and the playing one "
+        "(marked with an amber bar) finishes its last step first; the new pattern then starts from step 1.",
         "<b>RATE</b> (click): step length, 1/8, 1/16, 1/32, 1/8T or 1/16T. <b>SWING</b> 50% (straight) to 75% delays every "
         "second step. <b>GATE</b> is how much of its last step a note sounds. Drag up/down or scroll to change them.",
         "<b>SYNC</b>: <b>HOST</b> follows your DAW's tempo and transport (the sequencer plays while the DAW plays, if PLAY is on); "
@@ -281,7 +288,7 @@ def build():
     s += bullets([
         "The grid shows two octaves; each column is a step. <b>Click</b> an empty cell to add a note, <b>drag</b> to the "
         "right to make it longer, and click a note to remove it.",
-        "Steps are polyphonic: up to 8 notes each, the synth's voice count (in DOUBLE mode the synth has 4 voices, so "
+        "Steps are polyphonic: up to 8 notes each (in DOUBLE mode the synth has 4 voices, or 8 with 16 VOICES on, so "
         "bigger chords lose notes).",
         "Clicking a step (or its number) selects it, outlined in the numbers row.",
         "<b>Live recording</b>: with REC on while the sequencer plays, the notes you play go on the nearest step and last "
@@ -326,7 +333,8 @@ def build():
         ["Volume", "0-1", "Master output (the panel fader)."],
         ["Tune", "±100 cents", "Fine tuning (the panel slider)."],
         ["Joystick X / Joystick Y", "-1 to +1", "The panel joystick; automatable."],
-        ["Bend Range", "1-12 st", "How far joystick X and the pitch wheel bend."],
+        ["Bend Range", "1-12 st", "How far joystick X and the pitch wheel bend (BEND RANGE on the panel)."],
+        ["16 Voices", "off / on", "Doubles the polyphony (16 VOICES on the panel)."],
         ["Key Assign", "Poly / Chord", "POLY or CHORD (chord memory)."],
         ["Hold", "off / on", "Key assign HOLD (sustain pedal too)."],
         ["Effect Type", "Chorus / Phaser / Ensemble", "Which effect P48 switches on."],
@@ -346,9 +354,9 @@ def build():
     s.append(table(rows, [12 * mm, W / 2 - 12 * mm, 12 * mm, W / 2 - 12 * mm], header=False))
 
     # 7. About.
-    s += [PageBreak(), Paragraph("8. About P-800", h1), Paragraph(
-        "P-800 is built on <b>ISLA Poly-800</b> by Interspock, an open-source reconstruction of the Korg Poly-800 MkI / "
-        "EX-800 that recovers its modulation generator, envelope tables and factory data from the original firmware and "
+    s += [PageBreak(), Paragraph("8. About EX-800", h1), Paragraph(
+        "EX-800 (called P-800 up to version 0.5.2) is built on <b>ISLA Poly-800</b> by Interspock, an open-source "
+        "reconstruction of Korg's Poly-800 MkI and its rack version that recovers its modulation generator, envelope tables and factory data from the original firmware and "
         "cassette. The filter and parts of the signal path derive from Nick Copeland's Bristol synthesizer emulator.", body),
         Paragraph("Differences from the reconstruction it is built on", h2)]
     s += bullets([
@@ -361,12 +369,16 @@ def build():
         "Noise (P33) is mixed at the oscillators' level; in the reconstruction it was about 19 dB too quiet to hear.",
         "Preset banks, with the original programs as the Factory bank.",
         "A new polyphonic step sequencer with parameter locks replaces the original's simple sequencer (P86-P88).",
+        "P42 Resonance at 15 self-oscillates (a quiet, sustained tone at the cutoff while notes sound); in the "
+        "reconstruction the ring always died away. 16 VOICES doubles the original polyphony.",
         "Not included: cassette or MIDI SysEx program transfer.",
     ])
+    s += [Paragraph("Contact", h2), Paragraph(
+        "Questions, bug reports and suggestions: <b>ticcoross@gmail.com</b> (also shown under ABOUT on the panel).", body)]
     s += [Paragraph("Licence", h2), Paragraph(
-        "P-800 is free software under the <b>GNU General Public License v3.0 or later</b>. You may use, study, share and "
+        "EX-800 is free software under the <b>GNU General Public License v3.0 or later</b>. You may use, study, share and "
         "change it under that licence. The complete source code is at <b>github.com/Spunkmeyer77/Poly800</b>.", body),
-        Paragraph("Korg and Poly-800 are trademarks of Korg Inc. P-800 is an independent project and is not affiliated "
+        Paragraph("Korg, Poly-800 and EX-800 are trademarks of Korg Inc. EX-800 by Ticco Ross is an independent project and is not affiliated "
                   "with or endorsed by Korg.", small)]
 
     doc.build(s, onFirstPage=on_page, onLaterPages=on_page)

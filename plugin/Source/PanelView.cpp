@@ -253,6 +253,11 @@ void PanelView::buildLayout()
 
     // Right: performance switches.
     voicesR = { 1100, 80, 90, 64 };
+    voices16R = { 1090, 170, 104, 20 };
+    bendDownR  = { 50, 352, 30, 22 };
+    bendValueR = { 84, 352, 82, 22 };
+    bendUpR    = { 170, 352, 30, 22 };
+    aboutR = { 534, 143, 58, 17 };
     chorusR = { 1200, 80, 90, 64 };
     for (int i = 0; i < 3; ++i)
         chorusTypeR[(size_t) i] = { 1300.0f, 72.0f + (float) i * 26.0f, 100.0f, 22.0f };
@@ -324,6 +329,13 @@ struct SeqBar
 
 Hit PanelView::hitTest (juce::Point<float> p, const PanelState& st) const
 {
+    if (st.showAbout)   // the ABOUT window is modal: the e-mail link, anything else closes it
+        return aboutEmailR().contains (p) ? Hit { HitKind::aboutEmail } : Hit { HitKind::aboutClose };
+    if (aboutR.contains (p) || juce::Rectangle<float> (display.getX(), display.getY(), 200, 84).contains (p))
+        return { HitKind::about };
+    if (voices16R.contains (p)) return { HitKind::voices16 };
+    if (bendDownR.contains (p)) return { HitKind::bendDown };
+    if (bendUpR.contains (p)) return { HitKind::bendUp };
     if (seqBtnR.contains (p)) return { HitKind::seqToggle };
     if (playBtnR.contains (p)) return { HitKind::seqPlay };
     if (st.seq.visible && juce::Rectangle<float> (22, 414, 1396, 364).contains (p))
@@ -505,7 +517,8 @@ void PanelView::paint (juce::Graphics& g, const PanelState& s) const
     // Performance switches (P18 voices, P48 chorus).
     const int voicesIdx = indexOfParam (18), chorusIdx = indexOfParam (48);
     struct Sw { juce::Rectangle<float> r; const char* label; const char* top; const char* bot; bool up; };
-    for (const auto& sw : { Sw { voicesR, "VOICES", "4 DBL", "8 WHL", s.values[(size_t) voicesIdx] == 2 },
+    for (const auto& sw : { Sw { voicesR, "VOICES", s.voices16 ? "8 DBL" : "4 DBL", s.voices16 ? "16 WHL" : "8 WHL",
+                                 s.values[(size_t) voicesIdx] == 2 },
                             Sw { chorusR, "EFFECT", "ON", "OFF", s.values[(size_t) chorusIdx] == 1 } })
     {
         const auto slot = juce::Rectangle<float> (22, 56).withPosition (sw.r.getX(), sw.r.getY());
@@ -515,6 +528,18 @@ void PanelView::paint (juce::Graphics& g, const PanelState& s) const
         drawText (g, sw.bot, { slot.getRight() + 6, slot.getBottom() - 16, 60, 16 }, uiFont (12.0f), cDim, juce::Justification::centredLeft);
         drawText (g, sw.label, { sw.r.getX() - 10, slot.getBottom() + 8, 70, 18 }, uiFont (13.0f, true), cCream);
     }
+    drawPanelButton (g, voices16R, "16 VOICES", s.voices16, true, false, cCream, 10.5f);
+
+    // Joystick bend range (1..12 semitones).
+    drawText (g, "BEND RANGE", bendValueR.translated (-40, -17).withWidth (162).withHeight (14), uiFont (11.0f, true), cCream);
+    drawPanelButton (g, bendDownR, utf8 ("\xe2\x97\x80"), false, s.bendRange > 1, false);
+    drawPanelButton (g, bendUpR, utf8 ("\xe2\x96\xb6"), false, s.bendRange < 12, false);
+    g.setColour (juce::Colour (0xff060606));
+    g.fillRoundedRectangle (bendValueR, 3.0f);
+    g.setColour (juce::Colours::black);
+    g.drawRoundedRectangle (bendValueR, 3.0f, 1.0f);
+    drawText (g, utf8 ("\xc2\xb1") + juce::String (s.bendRange) + " ST", bendValueR, ledFont (14.0f), cLed);
+
     const char* typeNames[3] = { "CHORUS", "PHASER", "ENSEMBLE" };
     for (int i = 0; i < 3; ++i)
     {
@@ -545,6 +570,51 @@ void PanelView::paint (juce::Graphics& g, const PanelState& s) const
 
     if (s.seq.visible) paintSequencer (g, s);
     else               paintChart (g, s);
+
+    if (s.showAbout) paintAbout (g, s);
+}
+
+void PanelView::paintAbout (juce::Graphics& g, const PanelState& s) const
+{
+    g.setColour (juce::Colours::black.withAlpha (0.6f));
+    g.fillRect (juce::Rectangle<float> (0, 0, (float) width, (float) height));
+    const auto box = aboutBox();
+    g.setColour (juce::Colours::black.withAlpha (0.5f));
+    g.fillRoundedRectangle (box.translated (0, 8), 8.0f);
+    g.setColour (juce::Colour (0xff060606));
+    g.fillRoundedRectangle (box, 8.0f);
+    g.setColour (cAccent.withAlpha (0.7f));
+    g.drawRoundedRectangle (box, 8.0f, 1.5f);
+
+    const float x = box.getX() + 40, w = box.getWidth() - 80;
+    drawText (g, "TICCO ROSS", { x, box.getY() + 30, w, 20 }, uiFont (15.0f, true), cAccent, juce::Justification::centredLeft);
+    drawText (g, "EX-800", { x - 2, box.getY() + 52, w, 52 }, uiFont (46.0f, true), juce::Colour (0xffd8d0bb),
+              juce::Justification::centredLeft);
+    drawText (g, "Version " + s.version, { x, box.getY() + 104, w, 18 }, uiFont (13.0f), cDim, juce::Justification::centredLeft);
+
+    g.setColour (cAccent.withAlpha (0.4f));
+    g.fillRect (juce::Rectangle<float> (x, box.getY() + 134, w, 1));
+
+    const char* lines[] = {
+        "Polyphonic synthesizer modelled on the Korg Poly-800.",
+        "AU / VST3 / LV2 for macOS, Windows and Linux.",
+        "",
+        "Up to 16 voices, joystick, chord memory, Chorus / Phaser / Ensemble,",
+        "preset banks and a polyphonic step sequencer with parameter locks.",
+        "",
+        "Synthesis core: ISLA Poly-800.  Built with JUCE.",
+        "Licensed under the GNU GPL v3 or later.",
+    };
+    float y = box.getY() + 148;
+    for (auto* l : lines)
+    {
+        drawText (g, l, { x, y, w, 18 }, uiFont (13.0f), cCream, juce::Justification::centredLeft);
+        y += 20;
+    }
+    drawText (g, "CONTACT", { x, aboutEmailR().getY() - 18, w, 16 }, uiFont (11.0f, true), cDim, juce::Justification::centredLeft);
+    drawText (g, "ticcoross@gmail.com", aboutEmailR().withX (x), uiFont (17.0f, true), cAccent, juce::Justification::centredLeft);
+    drawText (g, "Click anywhere to close", { x, box.getBottom() - 34, w, 16 }, uiFont (11.0f), cDim.withAlpha (0.7f),
+              juce::Justification::centredRight);
 }
 
 void PanelView::paintPresets (juce::Graphics& g, const PanelState& s) const
@@ -593,10 +663,11 @@ void PanelView::paintDisplay (juce::Graphics& g, const PanelState& s) const
 
     drawText (g, "TICCO ROSS", { display.getX() + 20, display.getY() + 22, 200, 18 }, uiFont (14.0f, true), cAccent,
               juce::Justification::centredLeft);
-    drawText (g, "P-800", { display.getX() + 18, display.getY() + 42, 200, 46 }, uiFont (40.0f, true),
+    drawText (g, "EX-800", { display.getX() + 18, display.getY() + 42, 200, 46 }, uiFont (40.0f, true),
               juce::Colour (0xffd8d0bb), juce::Justification::centredLeft);
-    drawText (g, "v" + s.version, { display.getX() + 20, display.getY() + 88, 200, 14 }, uiFont (11.0f), cDim,
+    drawText (g, "v" + s.version, { display.getX() + 20, display.getY() + 88, 50, 14 }, uiFont (11.0f), cDim,
               juce::Justification::centredLeft);
+    drawPanelButton (g, aboutR, "ABOUT", false, true, false, cDim, 9.5f);
 
     const juce::String buf = s.entryBuffer.isEmpty() ? juce::String() : s.entryBuffer + "-";
     const int sel = s.selectedParam;
@@ -652,9 +723,16 @@ void PanelView::paintSequencer (juce::Graphics& g, const PanelState& s) const
     for (int i = 0; i < kSeqPatterns; ++i)
     {
         // Patterns holding something read brighter than empty ones.
+        // A change made while playing is queued: the chosen pattern blinks until the playing one ends.
         const bool used = ! d.patternEmpty (i);
-        drawPanelButton (g, SeqBar::pattern (i), juce::String::charToString ((juce::juce_wchar) ('A' + i)), d.current == i,
-                         true, false, used ? cCream : cDim.withAlpha (0.6f));
+        const bool queued = d.current == i && q.playingPattern >= 0 && q.playingPattern != i;
+        drawPanelButton (g, SeqBar::pattern (i), juce::String::charToString ((juce::juce_wchar) ('A' + i)),
+                         d.current == i && (! queued || q.blink), true, false, used ? cCream : cDim.withAlpha (0.6f));
+        if (q.playingPattern == i)
+        {
+            g.setColour (cAccent);
+            g.fillRect (SeqBar::pattern (i).reduced (5, 0).withY (SeqBar::y + SeqBar::h + 2).withHeight (2.0f));
+        }
     }
     caption (566, 32, "RATE");
     ledBox (SeqBar::rate(), seqRates[juce::jlimit (0, numSeqRates - 1, d.settings.rate)].name);
@@ -699,7 +777,7 @@ void PanelView::paintSequencer (juce::Graphics& g, const PanelState& s) const
         g.setColour (isBlack (note) ? juce::Colour (0xff1b1c1f) : juce::Colour (0xff26272b));
         g.fillRect (juce::Rectangle<float> (gx, key.getY(), gw, rowH));
     }
-    if (q.playStep >= 0 && q.playStep < length)
+    if (q.playStep >= 0 && q.playStep < length && (q.playingPattern < 0 || q.playingPattern == d.current))
     {
         g.setColour (cAccent.withAlpha (0.16f));
         g.fillRect (juce::Rectangle<float> (gx + (float) q.playStep * colW, gy, colW, gh));

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// P-800 step sequencer: polyphonic, 16 or 32 steps, 8 patterns, with per-step
+// EX-800 step sequencer: polyphonic, 16 or 32 steps, 8 patterns, with per-step
 // probability, gate and parameter locks (several parameters per step).
 // JUCE-free so it can be unit tested; the processor owns one SeqData (edited on
 // the message thread) and one SeqPlayer (audio thread) that works on a copy.
@@ -295,11 +295,22 @@ public:
     static constexpr int maxEvents = 512;
 
     void prepare (double sampleRate) { sr = sampleRate; reset(); }
-    void reset() { pendingCount = 0; running = false; lastStep = -1; pos = 0.0; }
+    void reset() { pendingCount = 0; running = false; lastStep = -1; pos = 0.0; playing = -1; cycleStart = 0; }
     void setData (const SeqData& d) { data = d; }
     const SeqData& getData() const { return data; }
 
     int currentStep() const { return running ? lastStep : -1; }
+    // Pattern playing now. A pattern change made while running waits until the
+    // playing pattern finishes its cycle (queued), then starts from its step 1.
+    int playingPattern() const { return running && playing >= 0 ? playing : data.current; }
+    bool changeQueued() const { return running && playing >= 0 && playing != data.current; }
+    // Step of the playing pattern at a position (in steps), for live recording.
+    int stepAt (double position) const
+    {
+        const int len = std::max (1, data.patterns[(size_t) playingPattern()].length);
+        const long long k = std::llround (position) - cycleStart;
+        return (int) (((k % len) + len) % len);
+    }
     double position() const { return pos; }    // in steps, for live recording
     bool isRunning() const { return running; }
 
@@ -307,7 +318,7 @@ public:
     const int16_t* activeLocks() const
     {
         if (! running || lastStep < 0) return nullptr;
-        const auto& st = data.pat().steps[(size_t) lastStep];
+        const auto& st = data.patterns[(size_t) playingPattern()].steps[(size_t) lastStep];
         return st.hasLocks() ? st.locks.data() : nullptr;
     }
 
@@ -336,6 +347,8 @@ public:
         {
             running = true;
             lastStep = -1;
+            playing = data.current;
+            cycleStart = 0;
             // Starting exactly on a step plays it; starting mid-step waits for the next.
             if (! useHost) start = 0.0;
             expectedStart = start;
@@ -343,10 +356,10 @@ public:
         else if (std::abs (start - expectedStart) > 0.01)
         {
             releaseAll (0, emit); // host jumped or looped
+            cycleStart = 0;       // realign patterns to the song position
         }
         const double end = start + numSamples * stepsPerSample;
         const double swingOffset = (std::clamp (st.swing, 50, 75) / 100.0 - 0.5) * 2.0;
-        const auto& p = data.pat();
 
         // Note-offs falling in this block.
         for (int i = 0; i < pendingCount;)
@@ -366,7 +379,17 @@ public:
             if (k < 0) continue;
             const double tk = (double) k + ((k & 1) ? swingOffset : 0.0);
             if (tk < start - 1e-9 || tk >= end) continue;
-            const int stepIndex = (int) (k % p.length);
+            // Pattern changes take effect when the playing pattern wraps to its first step.
+            {
+                const int len = data.patterns[(size_t) playing].length;
+                if (playing != data.current && (((k - cycleStart) % len) + len) % len == 0)
+                {
+                    playing = data.current;
+                    cycleStart = k;
+                }
+            }
+            const auto& p = data.patterns[(size_t) playing];
+            const int stepIndex = (int) ((((k - cycleStart) % p.length) + p.length) % p.length);
             const int offset = toOffset (tk, start, stepsPerSample, numSamples);
             lastStep = stepIndex;
             emit ({ offset, SeqEvent::step, 0, 0, stepIndex });
@@ -415,6 +438,8 @@ private:
     double sr = 48000.0;
     bool running = false;
     int lastStep = -1;
+    int playing = -1;            // pattern playing (data.current may be queued after it)
+    long long cycleStart = 0;    // step counter value where the playing pattern started
     double pos = 0.0, expectedStart = 0.0;
     std::array<Pending, 128> pending {};
     int pendingCount = 0;

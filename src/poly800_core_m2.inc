@@ -20,7 +20,13 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define P800_MAX_VOICES 8
+#define P800_MAX_VOICES 16 /* EX-800: 16 WHOLE / 8 DOUBLE when doubled */
+#ifndef P800_RESO_BOOST
+#define P800_RESO_BOOST 1.0f
+#endif
+#ifndef P800_RESO_LIMIT
+#define P800_RESO_LIMIT 1.0e-4f
+#endif
 #define P800_HARMONICS 4
 #define P800_TAU 6.283185307179586476925286766559
 #define P800_PI 3.1415926535897932384626433832795
@@ -143,6 +149,10 @@ struct Poly800Core {
     float joy_dco;      /* 0..1, joystick up: extra MG -> DCO */
     float joy_vcf;      /* 0..1, joystick down: extra MG -> VCF */
     float mg_raw_norm;  /* MG triangle at full (15) depth, -1..1 domain */
+
+    /* EX-800 additions (zeroed by calloc in create). */
+    int voices_doubled;  /* 1: 16 WHOLE / 8 DOUBLE voices */
+    float reso_gate;     /* 0..1, smoothed "a voice is sounding" */
 
     uint32_t noise_state;
     Chorus chorus;
@@ -349,7 +359,8 @@ static float fast_pitch_ratio(float semitones)
 
 static int voice_limit(const Poly800Core* core)
 {
-    return core->params.dco_mode == 2 ? 4 : 8;
+    const int base = core->params.dco_mode == 2 ? 4 : 8;
+    return core->voices_doubled ? base * 2 : base;
 }
 
 static void refresh_voice_increments(Poly800Core* core, Voice* voice)
@@ -474,6 +485,18 @@ static float shared_filter_tick(Poly800Core* core,
     float coff;
 
     /*
+     * EX-800: P42 = 15 self-oscillates. The Bristol law stops just short of
+     * it (the ring always dies away), so at the top setting an extra,
+     * soft-limited feedback path pushes the loop over the edge. P42 = 0..14
+     * are unchanged. The tanh limit, scaled with the cutoff, keeps the
+     * oscillation near a played note's level at every cutoff instead of the
+     * ~200x blow-up a plain feedback increase gives. It only runs while a
+     * voice is sounding (reso_gate), so the filter is quiet between notes.
+     */
+    const float extra_fb = P800_RESO_BOOST
+        * clampf(15.0f * resonance - 14.0f, 0.0f, 1.0f) * core->reso_gate;
+
+    /*
      * P-800 fix: keyboard tracking offsets the cutoff instead of replacing it.
      * The Bristol-derived law made the cutoff 4 x note frequency x P41, which
      * pinned the filter near the played pitch so P41 barely did anything with
@@ -501,6 +524,11 @@ static float shared_filter_tick(Poly800Core* core,
     float kfc = coff + modulation * mod_gain;
     kfc = clampf(kfc, 1.0e-10f, limit);
 
+    const float reso_limit = P800_RESO_LIMIT * kfc;
+    /* Above ~14 kHz the boost cannot make it oscillate and would only thin
+     * the sound, so it fades out between cutoff ~70 and ~88. */
+    const float extra = extra_fb * clampf((0.16f - kfc) * (1.0f / 0.06f), 0.0f, 1.0f);
+
     const float kfcr =
         kfc * (kfc * (1.8730f * kfc + 0.4955f) - 0.6490f) + 0.9988f;
     const float kacr = kfc * (-3.9364f * kfc + 1.8409f) + 0.9968f;
@@ -514,7 +542,10 @@ static float shared_filter_tick(Poly800Core* core,
         const float feed =
             (input + (add_noise ? filter_denormal_noise(f) : 0.0f))
             * P800_FILTER_OV2
-            - 4.0f * resonance * f->amf * kacr;
+            - 4.0f * kacr * (resonance * f->amf
+                + (extra > 0.0f
+                   ? extra * reso_limit * filter_tanh(f->amf / reso_limit)
+                   : 0.0f));
 
         f->ay1 = f->az1 + k2vg
             * (filter_tanh(feed) - filter_tanh(f->az1));
