@@ -33,7 +33,7 @@ jobs:
           if (-not $iscc) { $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" }
           New-Item -ItemType Directory -Force dist | Out-Null
           & $iscc "/DAppVersion=$version" "/DSrcDir=$env:GITHUB_WORKSPACE" plugin\installer\windows\P-800.iss
-          Copy-Item "plugin\docs\P-800 Manual.pdf" dist\
+          Copy-Item "plugin\docs\*.pdf" dist\
 
       - name: Upload
         uses: actions/upload-artifact@v4
@@ -73,11 +73,11 @@ jobs:
           PKG="P-800 $VERSION Linux x86_64"
           mkdir -p "dist/$PKG"
           cp -R "$ART/VST3/P-800.vst3" "$ART/LV2/P-800.lv2" "dist/$PKG/"
-          cp plugin/installer/linux/install.sh "plugin/docs/P-800 Manual.pdf" LICENSE "dist/$PKG/"
+          cp plugin/installer/linux/install.sh plugin/docs/*.pdf LICENSE "dist/$PKG/"
           chmod +x "dist/$PKG/install.sh"
           tar -C dist -czf "dist/$PKG.tar.gz" "$PKG"
           rm -rf "dist/$PKG"
-          cp "plugin/docs/P-800 Manual.pdf" dist/
+          cp plugin/docs/*.pdf dist/
 
       - name: Upload
         uses: actions/upload-artifact@v4

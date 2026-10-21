@@ -31,6 +31,7 @@ UninstallDisplayName=P-800 (Ticco Ross)
 [Files]
 Source: "{#SrcDir}\plugin\build\P800_artefacts\Release\VST3\P-800.vst3\*"; DestDir: "{commoncf64}\VST3\P-800.vst3"; Flags: recursesubdirs createallsubdirs ignoreversion
 Source: "{#SrcDir}\plugin\docs\P-800 Manual.pdf"; DestDir: "{commondocs}\Ticco Ross\P-800"; Flags: ignoreversion
+Source: "{#SrcDir}\plugin\docs\P-800 Update History.pdf"; DestDir: "{commondocs}\Ticco Ross\P-800"; Flags: ignoreversion
 
 [Icons]
 Name: "{commonprograms}\Ticco Ross\P-800 Manual"; Filename: "{commondocs}\Ticco Ross\P-800\P-800 Manual.pdf"
