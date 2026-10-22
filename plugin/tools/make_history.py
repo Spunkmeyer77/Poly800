@@ -95,6 +95,13 @@ HISTORY = [
         ("New <b>ABOUT</b> window with version and contact e-mail (ticcoross@gmail.com).", []),
         ("The manual is updated.", []),
     ]),
+    ("0.7.0: A filter for every voice", [
+        ("New <b>VCF: PER VOICE</b> mode (the default): every voice has its own filter and filter envelope, so "
+         "sustained chords are no longer retriggered when new notes are played. <b>VCF: SHARED</b> keeps the original "
+         "single filter.", []),
+        ("The About window and manual now say EX-800 is modelled on the Korg EX-800.", []),
+        ("The manual is updated.", []),
+    ]),
 ]
 
 

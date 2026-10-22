@@ -91,6 +91,9 @@ void poly800_core_set_pitch_bend(Poly800Core* core, float semitones);
 void poly800_core_set_joystick_mod(Poly800Core* core, float dco_amount, float vcf_amount);
 /* EX-800: sixteen != 0 doubles the polyphony (16 WHOLE / 8 DOUBLE). Resets the voices on change. */
 void poly800_core_set_voice_count(Poly800Core* core, int sixteen);
+/* EX-800: per_voice != 0 gives every voice its own VCF and DEG 3 (default in the plugin);
+ * 0 is the original single filter shared by all voices. */
+void poly800_core_set_filter_mode(Poly800Core* core, int per_voice);
 
 #ifdef __cplusplus
 }

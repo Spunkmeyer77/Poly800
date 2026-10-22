@@ -169,6 +169,51 @@ int main()
         fails += ok ? 0 : 1;
     }
 
+    // 0.7.0: per-voice filters. A held note is not retriggered by a new note: with a filter per
+    // voice, "A held, then B" is exactly A alone plus B alone; with the shared filter it is not.
+    {
+        auto render = [] (bool perVoice, bool playA, bool playB, std::vector<float>& out)
+        {
+            p800::Engine e;
+            e.prepare (48000, 256);
+            e.setFilterPerVoice (perVoice);
+            Poly800Params p;
+            poly800_params_default (&p);
+            p.dco_mode = 1; p.dco1_waveform = 2; p.dco1_level = 31; p.noise_level = 0; p.vcf_cutoff = 20;
+            p.vcf_resonance = 6; p.vcf_keytrack = 0; p.vcf_env_intensity = 15; p.vcf_trigger = 2; p.chorus_on = 0;
+            p.deg1_attack = 0; p.deg1_decay = 31; p.deg1_breakpoint = 31; p.deg1_slope = 31; p.deg1_sustain = 31;
+            p.deg3_attack = 0; p.deg3_decay = 10; p.deg3_breakpoint = 0; p.deg3_slope = 10; p.deg3_sustain = 0;
+            p.mg_vcf = 0; p.mg_dco = 0; p.master_gain = 0.05f;
+            e.setParams (p);
+            out.assign (48000, 0.0f);
+            std::vector<float> r (48000);
+            if (playA) e.noteOn (48, 100);
+            e.render (out.data(), r.data(), 24000);
+            if (playB) e.noteOn (55, 100);
+            e.render (out.data() + 24000, r.data(), 24000);
+        };
+        auto residual = [&] (bool perVoice)
+        {
+            std::vector<float> ab, a, b;
+            render (perVoice, true, true, ab);
+            render (perVoice, true, false, a);
+            render (perVoice, false, true, b);
+            double err = 0, ref = 0;
+            for (int i = 24000; i < 48000; ++i)
+            {
+                const double d = ab[(size_t) i] - a[(size_t) i] - b[(size_t) i];
+                err += d * d;
+                ref += (double) ab[(size_t) i] * ab[(size_t) i];
+            }
+            return std::sqrt (err / ref);
+        };
+        const double rv = residual (true), rs = residual (false);
+        const bool ok = rv < 0.001 && rs > 0.02;
+        std::printf ("%s per-voice filter: a new note leaves held notes alone (residual %.4f; shared filter %.3f)\n",
+                     ok ? "ok  " : "FAIL", rv, rs);
+        fails += ok ? 0 : 1;
+    }
+
     std::printf (fails ? "\n%d failure(s)\n" : "\nall filter and noise checks pass\n", fails);
     return fails ? 1 : 0;
 }

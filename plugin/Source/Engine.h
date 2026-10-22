@@ -25,6 +25,7 @@ public:
         core = poly800_core_create (hostRate * factor);
         setPerformance (perfBend, perfDco, perfVcf);
         setVoiceCount (voices16);
+        setFilterPerVoice (filterPerVoice);
         maxFrames = std::max (1, maxBlock);
         workL.assign ((size_t) (maxFrames * factor), 0.0f);
         workR.assign ((size_t) (maxFrames * factor), 0.0f);
@@ -44,6 +45,13 @@ public:
     }
 
     bool isPrepared() const { return core != nullptr; }
+
+    // EX-800: a filter per voice (true) or the original single shared filter. Kept across prepare().
+    void setFilterPerVoice (bool perVoice)
+    {
+        filterPerVoice = perVoice;
+        if (core) poly800_core_set_filter_mode (core, perVoice ? 1 : 0);
+    }
 
     // EX-800: 16 voices (8 in DOUBLE mode) instead of 8 (4). Kept across prepare().
     void setVoiceCount (bool sixteen)
@@ -148,6 +156,7 @@ private:
     Poly800Params last {};
     bool haveParams = false;
     bool voices16 = false;
+    bool filterPerVoice = true;
     float perfBend = 0.0f, perfDco = 0.0f, perfVcf = 0.0f;
     PolyEffects fx;
     int effectType = fxChorus;

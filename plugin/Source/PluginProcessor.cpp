@@ -21,6 +21,7 @@ P800Processor::P800Processor()
     joyYParam = apvts.getRawParameterValue ("joyY");
     bendRangeParam = apvts.getRawParameterValue ("bendRange");
     voices16Param = apvts.getRawParameterValue ("voices16");
+    vcfModeParam = apvts.getRawParameterValue ("vcfMode");
     holdParam = apvts.getRawParameterValue ("hold");
     keyModeParam = apvts.getRawParameterValue ("keyMode");
     chorusTypeParam = apvts.getRawParameterValue ("chorusType");
@@ -58,6 +59,11 @@ juce::AudioProcessorValueTreeState::ParameterLayout P800Processor::createLayout(
     // EX-800: double the polyphony - 16 voices in WHOLE mode, 8 in DOUBLE.
     layout.add (std::make_unique<juce::AudioParameterBool> (
         juce::ParameterID { "voices16", 1 }, "16 Voices", false));
+    // EX-800: every voice has its own filter and filter envelope (default), or the
+    // original single filter shared by all voices.
+    layout.add (std::make_unique<juce::AudioParameterChoice> (
+        juce::ParameterID { "vcfMode", 1 }, "Filter Mode",
+        juce::StringArray { "Per Voice", "Shared (vintage)" }, 0));
 
     // Key assign: POLY or CHORD (chord memory, ported from Polytwelve), plus HOLD.
     layout.add (std::make_unique<juce::AudioParameterChoice> (
@@ -156,6 +162,7 @@ void P800Processor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBu
     // Key assign. DOUBLE mode (P18 = 2) has 4 voices, WHOLE has 8; "16 Voices" doubles both.
     const bool sixteen = voices16Param->load() > 0.5f;
     engine.setVoiceCount (sixteen);
+    engine.setFilterPerVoice (vcfModeParam->load() < 0.5f);
     keys.setMode (juce::roundToInt (keyModeParam->load()));
     keys.setHold (holdParam->load() > 0.5f || sustainPedal);
     keys.setVoiceLimit ((coreParams.dco_mode == 2 ? 4 : 8) * (sixteen ? 2 : 1));

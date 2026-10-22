@@ -3,7 +3,7 @@
 AU / VST3 instrument by Ticco Ross (called P-800 up to 0.5.2), built on the ISLA Poly-800 synthesis core
 (`../src`). GPL-3.0-or-later, like the core.
 
-## Status: 0.6.0
+## Status: 0.7.0
 
 ![EX-800 panel](docs/panel.png)
 
@@ -50,6 +50,10 @@ AU / VST3 instrument by Ticco Ross (called P-800 up to 0.5.2), built on the ISLA
 - Buttons: backlit-rubber style throughout.
 
 ## Core additions
+
+- **Per-voice filters (0.7.0):** `poly800_core_set_filter_mode()` gives every voice
+  its own Huovilainen VCF and DEG 3 (plugin default); mode 0 is the original
+  single shared filter.
 
 - **Resonance self-oscillation (0.6.0):** at P42 = 15 an extra, tanh-limited
   feedback path (scaled with the cutoff) makes the filter self-oscillate at

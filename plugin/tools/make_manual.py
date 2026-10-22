@@ -75,13 +75,13 @@ PARAMS = [
     ("Noise", [
         ("33", "Noise level", "0-15", "White noise into the filter, shaped by DEG 3. At 15 it is about as loud as one full voice."),
     ]),
-    ("VCF (one filter shared by all voices)", [
+    ("VCF (one per voice, or one shared filter)", [
         ("41", "Cutoff", "0-99", "Filter cutoff frequency."),
         ("42", "Resonance", "0-15", "Emphasis at the cutoff. Very high settings ring and whistle; at 15 the filter self-oscillates while notes sound."),
         ("43", "Keyboard track", "0-2", "0 off, 1 half, 2 full: the cutoff rises with the highest note played (full: one octave per octave, from middle C)."),
         ("44", "EG polarity", "1-2", "1 inverted, 2 normal direction of the DEG 3 sweep."),
         ("45", "EG intensity", "0-15", "How far DEG 3 sweeps the cutoff."),
-        ("46", "Trigger", "1-2", "1 single: DEG 3 restarts only when all keys are released. 2 multi: every note restarts it."),
+        ("46", "Trigger", "1-2", "1 single: DEG 3 restarts only when all keys are released. 2 multi: every note restarts it. Only with VCF: SHARED."),
         ("48", "Effect", "0-1", "Turns the stereo effect on or off (Chorus, Phaser or Ensemble, chosen with TYPE)."),
     ]),
     ("DEG 1 / DEG 2 / DEG 3 (six-stage envelopes)", [
@@ -129,7 +129,7 @@ def build():
     if panel.exists():
         s.append(Image(str(panel), width=W, height=W * 800 / 1440))
     s += [Spacer(1, 12 * mm), Paragraph(
-        "A reconstruction of a classic 1980s digital-analog hybrid: eight (or sixteen) voices of stacked square-wave "
+        "Modelled on the Korg EX-800, a classic 1980s digital-analog hybrid: eight (or sixteen) voices of stacked square-wave "
         "footages, three six-stage envelopes, one shared resonant filter, and stereo chorus, phaser and ensemble.", subtitle), PageBreak()]
 
     # 1. Getting started.
@@ -165,7 +165,7 @@ def build():
                        "<b>CHORD MEMORY</b> stores the keys you are holding as the chord."],
         ["Programmer", "LED display (program, parameter, value), keypad, PROG/PARA key, <b>DOWN</b> / <b>UP</b>. "
                        "<b>ABOUT</b> (or a click on the EX-800 name) shows the version and contact details."],
-        ["Performance / Effects", "<b>VOICES</b> switch (8 voices WHOLE / 4 voices DOUBLE, same as P18), <b>16 VOICES</b> (doubles the polyphony: 16 WHOLE / 8 DOUBLE), <b>EFFECT</b> on/off (P48), "
+        ["Performance / Effects", "<b>VOICES</b> switch (8 voices WHOLE / 4 voices DOUBLE, same as P18), <b>16 VOICES</b> (doubles the polyphony: 16 WHOLE / 8 DOUBLE), <b>VCF: PER VOICE / SHARED</b> (a filter for every voice, or the original single filter), <b>EFFECT</b> on/off (P48), "
                                   "effect <b>TYPE</b> (Chorus, Phaser or Ensemble) and the <b>SPEED</b> slider (chorus or phaser rate, or ensemble intensity)."],
         ["Presets", "<b>BANK</b> (click to choose a bank), the preset name (click for the bank's list), "
                     "<b>&lt;</b> / <b>&gt;</b> to step through it, <b>SAVE</b>, <b>NEW BANK</b>, <b>DELETE</b> and the "
@@ -253,12 +253,19 @@ def build():
         "<b>Phaser</b>: a six-stage stereo phaser with feedback. SPEED sets its rate, about 0.05 to 6 Hz.",
         "<b>Ensemble</b>: a lush three-voice string ensemble. The slider sets its intensity.",
     ])
-    s += [Paragraph("Voices and the shared filter", h2), Paragraph(
+    s += [Paragraph("Voices and filters", h2), Paragraph(
         "WHOLE mode gives 8 voices with DCO 1 only; DOUBLE mode gives 4 voices, each with DCO 1 and DCO 2 for fatter, "
         "detuned or interval sounds. <b>16 VOICES</b> doubles both: 16 voices in WHOLE mode, 8 in DOUBLE (the VOICES "
-        "switch labels change to show it). Changing it silences the notes sounding. All voices go through <b>one shared filter</b>, as on the original, so a new note "
-        "can retrigger the filter envelope for chords already sounding (see P46 Trigger). Keyboard tracking follows the "
-        "highest note held.", body)]
+        "switch labels change to show it). Changing it silences the notes sounding.", body),
+        Paragraph(
+        "<b>VCF: PER VOICE</b> (the default) gives every voice its own filter and its own filter envelope (DEG 3), like "
+        "a fully polyphonic analog synth: each note's filter sweep starts when that note starts, so sustained chords "
+        "are never retriggered by new notes, and keyboard tracking follows each note. P46 Trigger has no effect in "
+        "this mode. <b>VCF: SHARED</b> is the original design: all voices go through <b>one filter</b> with one "
+        "envelope, so a new note can retrigger the filter for notes already sounding (with P46 = 2 MULTI) and "
+        "tracking follows the highest note. Some factory programs were voiced for the shared filter and sound "
+        "most authentic that way. Per-voice filtering uses more CPU (about three times as much with 16 voices "
+        "sounding).", body)]
 
     # 5. Parameter reference.
     # 5. Sequencer.
@@ -316,7 +323,7 @@ def build():
         "means the step has locks. Locks hold for the length of their step.",
     ])
     s += [Paragraph(
-        "The Poly-800 has no velocity, so notes always play at the same level; use the filter and envelope parameters "
+        "The EX-800 has no velocity, so notes always play at the same level; use the filter and envelope parameters "
         "(or locks on them) for accents.", small)]
 
     s += [PageBreak(), Paragraph("6. Parameter reference", h1)]
@@ -335,6 +342,7 @@ def build():
         ["Joystick X / Joystick Y", "-1 to +1", "The panel joystick; automatable."],
         ["Bend Range", "1-12 st", "How far joystick X and the pitch wheel bend (BEND RANGE on the panel)."],
         ["16 Voices", "off / on", "Doubles the polyphony (16 VOICES on the panel)."],
+        ["Filter Mode", "Per Voice / Shared", "A filter per voice, or the original single filter (VCF button)."],
         ["Key Assign", "Poly / Chord", "POLY or CHORD (chord memory)."],
         ["Hold", "off / on", "Key assign HOLD (sustain pedal too)."],
         ["Effect Type", "Chorus / Phaser / Ensemble", "Which effect P48 switches on."],
@@ -355,29 +363,27 @@ def build():
 
     # 7. About.
     s += [PageBreak(), Paragraph("8. About EX-800", h1), Paragraph(
-        "EX-800 (called P-800 up to version 0.5.2) is built on <b>ISLA Poly-800</b> by Interspock, an open-source "
-        "reconstruction of Korg's Poly-800 MkI and its rack version that recovers its modulation generator, envelope tables and factory data from the original firmware and "
-        "cassette. The filter and parts of the signal path derive from Nick Copeland's Bristol synthesizer emulator.", body),
-        Paragraph("Differences from the reconstruction it is built on", h2)]
+        "EX-800 (called P-800 up to version 0.5.2) is modelled on the <b>Korg EX-800</b>, the rack-mount version of "
+        "the Poly-800: its oscillators, footages, envelopes, modulation generator, filter and the 64 factory programs.", body),
+        Paragraph("Differences from the original EX-800", h2)]
     s += bullets([
-        "Runs internally at 88.2/96 kHz at lower host rates, because the engine's lower-rate filter branch becomes "
-        "unstable at full resonance.",
-        "Adds joystick bend and modulation, HOLD, the hardware-style panel, and the chord memory and "
+        "A filter and filter envelope for every voice (VCF: PER VOICE), so new notes never retrigger the filter on "
+        "notes already sounding. VCF: SHARED gives back the original single filter.",
+        "16 VOICES doubles the original polyphony (16 WHOLE / 8 DOUBLE).",
+        "P42 Resonance at 15 self-oscillates (a quiet, sustained tone at the cutoff while notes sound).",
+        "Keyboard tracking (P43) adds to the cutoff, so P41 Cutoff works at every tracking setting.",
+        "A hardware-style panel with joystick bend and modulation, HOLD, and the chord memory and "
         "chorus, phaser and ensemble from Polytwelve (Ticco Ross).",
-        "Keyboard tracking (P43) adds to the cutoff instead of replacing it, so P41 Cutoff works at every tracking "
-        "setting, as on the original instrument.",
-        "Noise (P33) is mixed at the oscillators' level; in the reconstruction it was about 19 dB too quiet to hear.",
         "Preset banks, with the original programs as the Factory bank.",
         "A new polyphonic step sequencer with parameter locks replaces the original's simple sequencer (P86-P88).",
-        "P42 Resonance at 15 self-oscillates (a quiet, sustained tone at the cutoff while notes sound); in the "
-        "reconstruction the ring always died away. 16 VOICES doubles the original polyphony.",
         "Not included: cassette or MIDI SysEx program transfer.",
     ])
     s += [Paragraph("Contact", h2), Paragraph(
         "Questions, bug reports and suggestions: <b>ticcoross@gmail.com</b> (also shown under ABOUT on the panel).", body)]
     s += [Paragraph("Licence", h2), Paragraph(
         "EX-800 is free software under the <b>GNU General Public License v3.0 or later</b>. You may use, study, share and "
-        "change it under that licence. The complete source code is at <b>github.com/Spunkmeyer77/Poly800</b>.", body),
+        "change it under that licence. It includes open-source code by other authors under the same licence; their "
+        "copyright notices are kept in the source code, which is at <b>github.com/Spunkmeyer77/Poly800</b>.", body),
         Paragraph("Korg, Poly-800 and EX-800 are trademarks of Korg Inc. EX-800 by Ticco Ross is an independent project and is not affiliated "
                   "with or endorsed by Korg.", small)]
 

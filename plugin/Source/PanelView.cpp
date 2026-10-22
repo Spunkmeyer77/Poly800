@@ -253,7 +253,8 @@ void PanelView::buildLayout()
 
     // Right: performance switches.
     voicesR = { 1100, 80, 90, 64 };
-    voices16R = { 1090, 170, 104, 20 };
+    voices16R = { 1090, 170, 100, 20 };
+    vcfModeR  = { 1196, 170, 98, 20 };
     bendDownR  = { 50, 352, 30, 22 };
     bendValueR = { 84, 352, 82, 22 };
     bendUpR    = { 170, 352, 30, 22 };
@@ -334,6 +335,7 @@ Hit PanelView::hitTest (juce::Point<float> p, const PanelState& st) const
     if (aboutR.contains (p) || juce::Rectangle<float> (display.getX(), display.getY(), 200, 84).contains (p))
         return { HitKind::about };
     if (voices16R.contains (p)) return { HitKind::voices16 };
+    if (vcfModeR.contains (p)) return { HitKind::vcfMode };
     if (bendDownR.contains (p)) return { HitKind::bendDown };
     if (bendUpR.contains (p)) return { HitKind::bendUp };
     if (seqBtnR.contains (p)) return { HitKind::seqToggle };
@@ -529,6 +531,7 @@ void PanelView::paint (juce::Graphics& g, const PanelState& s) const
         drawText (g, sw.label, { sw.r.getX() - 10, slot.getBottom() + 8, 70, 18 }, uiFont (13.0f, true), cCream);
     }
     drawPanelButton (g, voices16R, "16 VOICES", s.voices16, true, false, cCream, 10.5f);
+    drawPanelButton (g, vcfModeR, s.vcfShared ? "VCF: SHARED" : "VCF: PER VOICE", ! s.vcfShared, true, false, cCream, 10.0f);
 
     // Joystick bend range (1..12 semitones).
     drawText (g, "BEND RANGE", bendValueR.translated (-40, -17).withWidth (162).withHeight (14), uiFont (11.0f, true), cCream);
@@ -596,14 +599,14 @@ void PanelView::paintAbout (juce::Graphics& g, const PanelState& s) const
     g.fillRect (juce::Rectangle<float> (x, box.getY() + 134, w, 1));
 
     const char* lines[] = {
-        "Polyphonic synthesizer modelled on the Korg Poly-800.",
+        "Polyphonic synthesizer modelled on the Korg EX-800.",
         "AU / VST3 / LV2 for macOS, Windows and Linux.",
         "",
-        "Up to 16 voices, joystick, chord memory, Chorus / Phaser / Ensemble,",
+        "Up to 16 voices with a filter per voice, joystick, chord memory, effects,",
         "preset banks and a polyphonic step sequencer with parameter locks.",
         "",
-        "Synthesis core: ISLA Poly-800.  Built with JUCE.",
-        "Licensed under the GNU GPL v3 or later.",
+        "Free software under the GNU GPL v3 or later; includes GPL code by",
+        "other authors (see the source code). Built with JUCE.",
     };
     float y = box.getY() + 148;
     for (auto* l : lines)

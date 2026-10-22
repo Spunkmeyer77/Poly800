@@ -86,6 +86,7 @@ void P800Editor::refreshState()
     s.hold = getReal ("hold") > 0.5f;
     s.bendRange = juce::roundToInt (getReal ("bendRange"));
     s.voices16 = getReal ("voices16") > 0.5f;
+    s.vcfShared = getReal ("vcfMode") > 0.5f;
     s.seq.playingPattern = processor.getSeqPlayingPattern();
     s.seq.blink = (juce::Time::getMillisecondCounter() / 250) % 2 == 0;
     const bool queued = s.seq.playingPattern >= 0 && s.seq.playingPattern != s.seq.data.current;
@@ -111,7 +112,7 @@ void P800Editor::refreshState()
                       || seqChanged || s.seq.playing != state.seq.playing || s.seq.recording != state.seq.recording
                       || s.seq.playStep != state.seq.playStep || s.seq.selectedStep != state.seq.selectedStep
                       || juce::roundToInt (s.seq.hostBpm) != juce::roundToInt (state.seq.hostBpm)
-                      || s.seq.laneHeight != state.seq.laneHeight || s.voices16 != state.voices16
+                      || s.seq.laneHeight != state.seq.laneHeight || s.voices16 != state.voices16 || s.vcfShared != state.vcfShared
                       || s.seq.playingPattern != state.seq.playingPattern || (queued && s.seq.blink != state.seq.blink);
     state = s;
     if (changed)
@@ -238,6 +239,7 @@ void P800Editor::mouseDown (const juce::MouseEvent& e)
             break;
         }
         case HitKind::voices16: setReal ("voices16", state.voices16 ? 0.0f : 1.0f); break;
+        case HitKind::vcfMode:  setReal ("vcfMode", state.vcfShared ? 0.0f : 1.0f); break;
         case HitKind::bendDown: setReal ("bendRange", (float) juce::jmax (1, state.bendRange - 1)); break;
         case HitKind::bendUp:   setReal ("bendRange", (float) juce::jmin (12, state.bendRange + 1)); break;
         case HitKind::about:      state.showAbout = true; repaint(); break;

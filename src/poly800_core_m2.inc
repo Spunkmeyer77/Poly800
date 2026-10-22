@@ -61,6 +61,14 @@ typedef struct {
 } EnvConfig;
 
 typedef struct {
+    float az1, az2, az3, az4, az5;
+    float ay1, ay2, ay3, ay4;
+    float amf;
+    uint32_t noise1;
+    uint32_t noise2;
+} SharedFilter;
+
+typedef struct {
     uint8_t active;
     uint8_t gate;
     uint8_t note;
@@ -71,15 +79,10 @@ typedef struct {
     float inc2[P800_HARMONICS];
     Envelope deg1;
     Envelope deg2;
+    /* EX-800 per-voice filter mode: each voice's own VCF and DEG 3. */
+    Envelope deg3;
+    SharedFilter filter;
 } Voice;
-
-typedef struct {
-    float az1, az2, az3, az4, az5;
-    float ay1, ay2, ay3, ay4;
-    float amf;
-    uint32_t noise1;
-    uint32_t noise2;
-} SharedFilter;
 
 typedef struct {
     float* delay;
@@ -152,6 +155,7 @@ struct Poly800Core {
 
     /* EX-800 additions (zeroed by calloc in create). */
     int voices_doubled;  /* 1: 16 WHOLE / 8 DOUBLE voices */
+    int filter_per_voice; /* 1: every voice has its own VCF + DEG 3 */
     float reso_gate;     /* 0..1, smoothed "a voice is sounding" */
 
     uint32_t noise_state;
@@ -475,10 +479,9 @@ static float filter_denormal_noise(SharedFilter* f)
  * 2x Huovilainen branch in filter.c. This is a direct per-instance adaptation
  * of that signal path, with the same tuning/correction constants.
  */
-static float shared_filter_tick(Poly800Core* core,
+static float filter_tick(Poly800Core* core, SharedFilter* f, float gate,
     float input, float modulation, int highest_note)
 {
-    SharedFilter* f = &core->filter;
     const float cutoff = core->derived.filter_cutoff;
     const float tracking = core->derived.filter_keytrack;
     const float resonance = core->derived.filter_resonance;
@@ -494,7 +497,7 @@ static float shared_filter_tick(Poly800Core* core,
      * voice is sounding (reso_gate), so the filter is quiet between notes.
      */
     const float extra_fb = P800_RESO_BOOST
-        * clampf(15.0f * resonance - 14.0f, 0.0f, 1.0f) * core->reso_gate;
+        * clampf(15.0f * resonance - 14.0f, 0.0f, 1.0f) * gate;
 
     /*
      * P-800 fix: keyboard tracking offsets the cutoff instead of replacing it.
@@ -582,6 +585,20 @@ static float shared_filter_tick(Poly800Core* core,
     }
 
     return f->amf * P800_FILTER_V2 * (high_rate ? 1.0f : 0.5f);
+}
+
+static float shared_filter_tick(Poly800Core* core,
+    float input, float modulation, int highest_note)
+{
+    return filter_tick(core, &core->filter, core->reso_gate,
+                       input, modulation, highest_note);
+}
+
+static void voice_filter_reset(SharedFilter* f)
+{
+    memset(f, 0, sizeof(*f));
+    f->noise1 = 0x67452301u;
+    f->noise2 = 0xefcdab89u;
 }
 
 static float chorus_read(const Chorus* chorus, float delay_samples)
@@ -961,6 +978,9 @@ void poly800_core_note_on(
     }
 
     Voice* voice = find_voice_for_note_on(core, note);
+    if (!voice->active)
+        voice_filter_reset(&voice->filter);
+    env_trigger(&voice->deg3);
     memset(voice->phase1, 0, sizeof(voice->phase1));
     memset(voice->phase2, 0, sizeof(voice->phase2));
     voice->active = 1;
@@ -999,6 +1019,7 @@ void poly800_core_note_off(Poly800Core* core, uint8_t note)
             voice->gate = 0;
             env_release(&voice->deg1);
             env_release(&voice->deg2);
+            env_release(&voice->deg3);
         }
     }
 
@@ -1019,6 +1040,7 @@ void poly800_core_all_notes_off(Poly800Core* core)
             core->voices[i].gate = 0;
             env_release(&core->voices[i].deg1);
             env_release(&core->voices[i].deg2);
+            env_release(&core->voices[i].deg3);
         }
     }
     env_release(&core->deg3);

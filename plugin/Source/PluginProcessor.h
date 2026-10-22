@@ -110,6 +110,7 @@ private:
     std::atomic<float>* joyYParam = nullptr;
     std::atomic<float>* bendRangeParam = nullptr;
     std::atomic<float>* voices16Param = nullptr;
+    std::atomic<float>* vcfModeParam = nullptr;
     std::atomic<float>* holdParam = nullptr;
     std::atomic<float>* keyModeParam = nullptr;
     std::atomic<float>* chorusTypeParam = nullptr;

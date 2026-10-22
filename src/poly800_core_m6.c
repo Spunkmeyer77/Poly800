@@ -508,6 +508,24 @@ void poly800_core_render(
         float oscillator_bus = 0.0f;
         int highest_died = 0;
         int any_active = 0;
+        const int per_voice = core->filter_per_voice;
+        const float vcf_mg = mg_vcf_norm * P800_M6_VCF_DOMAIN_MAX;
+        float filtered = 0.0f;
+
+        /*
+         * EX-800 per-voice filter: one white-noise sample feeds every voice,
+         * each through its own DEG 3; dividing by the number of sounding
+         * voices keeps the total noise level the same as the shared filter's.
+         */
+        float voice_noise = 0.0f;
+        if (per_voice && core->derived.noise_level > 0.0f) {
+            int n = 0;
+            for (int i = 0; i < limit; ++i)
+                n += core->voices[i].active ? 1 : 0;
+            if (n > 0)
+                voice_noise = white_noise(core) * core->derived.noise_level
+                            * P800_OSC_BUS_GAIN / (float)n;
+        }
 
         for (int i = 0; i < limit; ++i) {
             Voice* voice = &core->voices[i];
@@ -516,7 +534,7 @@ void poly800_core_render(
             any_active = 1;
 
             const float env1 = env_tick(&voice->deg1, &core->derived.deg1);
-            oscillator_bus += render_dco(
+            float voice_osc = render_dco(
                 voice->phase1, voice->inc1,
                 core->derived.dco1_mask,
                 core->derived.dco1_waveform,
@@ -525,12 +543,23 @@ void poly800_core_render(
 
             if (double_mode) {
                 const float env2 = env_tick(&voice->deg2, &core->derived.deg2);
-                oscillator_bus += render_dco(
+                voice_osc += render_dco(
                     voice->phase2, voice->inc2,
                     core->derived.dco2_mask,
                     core->derived.dco2_waveform,
                     pitch_ratio)
                     * env2 * core->derived.dco2_level;
+            }
+
+            if (per_voice) {
+                /* Own DEG 3 and filter: other notes never retrigger it. */
+                const float venv3 = env_tick(&voice->deg3, &core->derived.deg3);
+                const float in = voice_osc * P800_OSC_BUS_GAIN + voice_noise * venv3;
+                filtered += filter_tick(core, &voice->filter, 1.0f, in,
+                                        venv3 * core->derived.env_amount + vcf_mg,
+                                        voice->note);
+            } else {
+                oscillator_bus += voice_osc;
             }
 
             if (!voice->gate
@@ -547,28 +576,28 @@ void poly800_core_render(
 
         core->reso_gate += ((any_active ? 1.0f : 0.0f) - core->reso_gate) * gate_coef;
 
+        /* The shared envelope keeps running in both modes so switching is seamless. */
         const float env3 = env_tick(&core->deg3, &core->derived.deg3);
-        float mixed = oscillator_bus * P800_OSC_BUS_GAIN;
 
-        /*
-         * P-800 fix: the noise joins the oscillators on the same mixer bus, so
-         * it takes the same bus gain. Without it P33 = 15 sat about 19 dB below
-         * a single voice and vanished under any note; now full noise is about
-         * as loud as one full-level voice.
-         */
-        if (core->derived.noise_level > 0.0f) {
-            mixed += white_noise(core)
-                   * core->derived.noise_level
-                   * env3
-                   * P800_OSC_BUS_GAIN;
+        if (!per_voice) {
+            float mixed = oscillator_bus * P800_OSC_BUS_GAIN;
+
+            /*
+             * P-800 fix: the noise joins the oscillators on the same mixer bus, so
+             * it takes the same bus gain. Without it P33 = 15 sat about 19 dB below
+             * a single voice and vanished under any note; now full noise is about
+             * as loud as one full-level voice.
+             */
+            if (core->derived.noise_level > 0.0f) {
+                mixed += white_noise(core)
+                       * core->derived.noise_level
+                       * env3
+                       * P800_OSC_BUS_GAIN;
+            }
+
+            filtered = shared_filter_tick(core, mixed,
+                env3 * core->derived.env_amount + vcf_mg, highest);
         }
-
-        const float modulation =
-            env3 * core->derived.env_amount
-            + mg_vcf_norm * P800_M6_VCF_DOMAIN_MAX;
-
-        const float filtered =
-            shared_filter_tick(core, mixed, modulation, highest);
 
         float out_l;
         float out_r;
@@ -613,4 +642,22 @@ void poly800_core_set_voice_count(Poly800Core* core, int sixteen)
     /* Same as a WHOLE/DOUBLE change: start from silence. */
     poly800_core_reset(core);
     core->voices_doubled = doubled;
+}
+
+void poly800_core_set_filter_mode(Poly800Core* core, int per_voice)
+{
+    if (!core)
+        return;
+    const int mode = per_voice ? 1 : 0;
+    if (mode == core->filter_per_voice)
+        return;
+    core->filter_per_voice = mode;
+    /* Start the newly used filters from rest. */
+    memset(&core->filter, 0, sizeof(core->filter));
+    core->filter.noise1 = 0x67452301u;
+    core->filter.noise2 = 0xefcdab89u;
+    for (unsigned i = 0; i < P800_MAX_VOICES; ++i) {
+        voice_filter_reset(&core->voices[i].filter);
+        core->voices[i].deg3 = core->deg3;
+    }
 }
