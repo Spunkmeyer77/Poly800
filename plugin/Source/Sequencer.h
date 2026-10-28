@@ -34,6 +34,7 @@ inline constexpr LockExtra lockExtras[] = {
     { "tune",        "Tune",      -100, 100 },   // cents
     { "joyX",        "Joystick X (Bend)", -100, 100 },
     { "joyY",        "Joystick Y (DCO+ / VCF-)", -100, 100 },
+    { "seqRate",     "Sequencer Rate", 0, 6 },   // that step's length: 0 = 1/2 ... 6 = 1/32 (seqRateOrder)
 };
 constexpr int numLockExtras = (int) (sizeof (lockExtras) / sizeof (lockExtras[0]));
 constexpr int kLockSlots = numParams + numLockExtras;
@@ -89,8 +90,17 @@ struct SeqSettings
 };
 
 struct SeqRate { const char* name; double stepsPerBeat; };
-inline constexpr SeqRate seqRates[] = { { "1/8", 2.0 }, { "1/16", 4.0 }, { "1/32", 8.0 }, { "1/8T", 3.0 }, { "1/16T", 6.0 } };
+// Indices are stored in sessions and presets, so new rates go at the end (1/4 and 1/2 in 0.8.0).
+inline constexpr SeqRate seqRates[] = { { "1/8", 2.0 }, { "1/16", 4.0 }, { "1/32", 8.0 }, { "1/8T", 3.0 }, { "1/16T", 6.0 },
+                                        { "1/4", 1.0 }, { "1/2", 0.5 } };
 inline constexpr int numSeqRates = (int) (sizeof (seqRates) / sizeof (seqRates[0]));
+// The rates from slowest to fastest (menus, and the Sequencer Rate lock value 0..6).
+inline constexpr int seqRateOrder[] = { 6, 5, 0, 3, 1, 4, 2 };
+inline int seqRateOrderOf (int rateIndex)
+{
+    for (int i = 0; i < numSeqRates; ++i) if (seqRateOrder[i] == rateIndex) return i;
+    return 2;
+}
 
 // ---- the editable data (message thread) ------------------------------------------------------
 struct SeqData
@@ -331,9 +341,9 @@ public:
         const auto& st = data.settings;
         const bool useHost = st.hostSync && t.hasHost;
         const bool shouldRun = run && (useHost ? t.hostPlaying : true);
-        const double spb = seqRates[std::clamp (st.rate, 0, numSeqRates - 1)].stepsPerBeat;
+        const double baseSpb = seqRates[std::clamp (st.rate, 0, numSeqRates - 1)].stepsPerBeat;
         const double bpm = useHost ? std::max (1.0, t.bpm) : (double) st.bpm;
-        const double stepsPerSample = bpm / 60.0 * spb / sr;
+        const double beatsPerSample = bpm / 60.0 / sr;
 
         if (! shouldRun)
         {
@@ -342,7 +352,16 @@ public:
             return count;
         }
 
-        double start = useHost ? t.ppq * spb : (running ? pos : 0.0);
+        const double swingOffset = (std::clamp (st.swing, 50, 75) / 100.0 - 0.5) * 2.0;
+        auto stepTime = [swingOffset] (long long k) { return (double) k + ((k & 1) ? swingOffset : 0.0); };
+        auto resync = [&] (double at)
+        {
+            pos = at;
+            long long k = std::max (0LL, (long long) std::floor (at) - 1);
+            while (stepTime (k) < at - 1e-9) ++k;
+            nextK = k;
+        };
+
         if (! running)
         {
             running = true;
@@ -350,84 +369,56 @@ public:
             playing = data.current;
             cycleStart = 0;
             // Starting exactly on a step plays it; starting mid-step waits for the next.
-            if (! useHost) start = 0.0;
-            expectedStart = start;
+            resync (useHost ? t.ppq * baseSpb : 0.0);
         }
-        else if (std::abs (start - expectedStart) > 0.01)
+        else if (useHost && std::abs (t.ppq - expectedPpq) > 0.01)
         {
             releaseAll (0, emit); // host jumped or looped
             cycleStart = 0;       // realign patterns to the song position
+            lastStep = -1;
+            resync (t.ppq * baseSpb);
         }
-        const double end = start + numSamples * stepsPerSample;
-        const double swingOffset = (std::clamp (st.swing, 50, 75) / 100.0 - 0.5) * 2.0;
+        expectedPpq = t.ppq + numSamples * beatsPerSample;
 
-        // Note-offs falling in this block.
-        for (int i = 0; i < pendingCount;)
+        // Time is counted in steps. A step's length follows the RATE setting, or that step's
+        // Sequencer Rate lock, so the block is walked one step at a time.
+        double done = 0.0; // samples of this block already covered
+        auto offsetOf = [&] (double at, double sps)
         {
-            if (pending[i].endPos < end)
-            {
-                emit ({ toOffset (pending[i].endPos, start, stepsPerSample, numSamples), SeqEvent::noteOff, pending[i].note, 0, 0 });
-                pending[i] = pending[--pendingCount];
-            }
-            else ++i;
-        }
-
-        // Steps starting in this block (odd steps are delayed by the swing).
-        const long long kFirst = (long long) std::floor (start) - 1, kLast = (long long) std::ceil (end) + 1;
-        for (long long k = kFirst; k <= kLast; ++k)
+            return std::clamp ((int) std::floor (done + (at - pos) / sps), 0, std::max (0, numSamples - 1));
+        };
+        auto releaseUntil = [&] (double until, double sps)
         {
-            if (k < 0) continue;
-            const double tk = (double) k + ((k & 1) ? swingOffset : 0.0);
-            if (tk < start - 1e-9 || tk >= end) continue;
-            // Pattern changes take effect when the playing pattern wraps to its first step.
+            for (int i = 0; i < pendingCount;)
             {
-                const int len = data.patterns[(size_t) playing].length;
-                if (playing != data.current && (((k - cycleStart) % len) + len) % len == 0)
+                if (pending[i].endPos <= until + 1e-9)
                 {
-                    playing = data.current;
-                    cycleStart = k;
+                    emit ({ offsetOf (pending[i].endPos, sps), SeqEvent::noteOff, pending[i].note, 0, 0 });
+                    pending[i] = pending[--pendingCount];
                 }
+                else ++i;
             }
-            const auto& p = data.patterns[(size_t) playing];
-            const int stepIndex = (int) ((((k - cycleStart) % p.length) + p.length) % p.length);
-            const int offset = toOffset (tk, start, stepsPerSample, numSamples);
-            lastStep = stepIndex;
-            emit ({ offset, SeqEvent::step, 0, 0, stepIndex });
+        };
 
-            const auto& step = p.steps[(size_t) stepIndex];
-            if (step.noteCount() == 0) continue;
-            if (step.probability < 100 && (int) (nextRandom() % 100) >= step.probability) continue;
-            const double gateFrac = std::max (0.05, step.gate / 100.0 * std::clamp (st.gate, 5, 100) / 100.0);
-            for (const auto& n : step.notes)
-            {
-                if (! n.used()) continue;
-                // Retrigger: end a still-sounding copy of the same note first.
-                for (int i = 0; i < pendingCount; ++i)
-                    if (pending[i].note == n.note)
-                    {
-                        emit ({ offset, SeqEvent::noteOff, n.note, 0, 0 });
-                        pending[i] = pending[--pendingCount];
-                        break;
-                    }
-                emit ({ offset, SeqEvent::noteOn, n.note, n.velocity, stepIndex });
-                if (pendingCount < (int) pending.size())
-                    pending[(size_t) pendingCount++] = { n.note, tk + (n.length - 1) + gateFrac };
-            }
-        }
-
-        // Note-offs that also fall inside this block after being created in it.
-        for (int i = 0; i < pendingCount;)
+        for (;;)
         {
-            if (pending[i].endPos < end)
+            const double sps = std::max (1e-12, beatsPerSample * currentSpb (baseSpb)); // steps per sample
+            const double tk = stepTime (nextK);
+            const double toNext = std::max (0.0, (tk - pos) / sps);
+            if (done + toNext >= (double) numSamples)
             {
-                emit ({ toOffset (pending[i].endPos, start, stepsPerSample, numSamples), SeqEvent::noteOff, pending[i].note, 0, 0 });
-                pending[i] = pending[--pendingCount];
+                const double end = pos + ((double) numSamples - done) * sps;
+                releaseUntil (end - 1e-9, sps);
+                pos = end;
+                break;
             }
-            else ++i;
+            releaseUntil (tk - 1e-9, sps);
+            done += toNext;
+            pos = tk;
+            fireStep (nextK, tk, emit, offsetOf (tk, sps), st);
+            ++nextK;
         }
 
-        pos = end;
-        expectedStart = end;
         sortEvents (out, count);
         return count;
     }
@@ -440,17 +431,61 @@ private:
     int lastStep = -1;
     int playing = -1;            // pattern playing (data.current may be queued after it)
     long long cycleStart = 0;    // step counter value where the playing pattern started
-    double pos = 0.0, expectedStart = 0.0;
+    double pos = 0.0, expectedPpq = 0.0;
+    long long nextK = 0;          // the next step to play (absolute step counter)
+
+    // Steps per beat while the current step plays: its Sequencer Rate lock, or RATE.
+    double currentSpb (double baseSpb) const
+    {
+        static const int slot = lockSlotOf ("seqRate");
+        if (lastStep < 0 || playing < 0) return baseSpb;
+        const int v = data.patterns[(size_t) playing].steps[(size_t) lastStep].locks[(size_t) slot];
+        if (v == kNoLock) return baseSpb;
+        return seqRates[seqRateOrder[std::clamp ((int) v, 0, numSeqRates - 1)]].stepsPerBeat;
+    }
+
+    template <typename Emit>
+    void fireStep (long long k, double tk, Emit& emit, int offset, const SeqSettings& st)
+    {
+        // Pattern changes take effect when the playing pattern wraps to its first step.
+        {
+            const int len = data.patterns[(size_t) playing].length;
+            if (playing != data.current && (((k - cycleStart) % len) + len) % len == 0)
+            {
+                playing = data.current;
+                cycleStart = k;
+            }
+        }
+        const auto& p = data.patterns[(size_t) playing];
+        const int stepIndex = (int) ((((k - cycleStart) % p.length) + p.length) % p.length);
+        lastStep = stepIndex;
+        emit ({ offset, SeqEvent::step, 0, 0, stepIndex });
+
+        const auto& step = p.steps[(size_t) stepIndex];
+        if (step.noteCount() == 0) return;
+        if (step.probability < 100 && (int) (nextRandom() % 100) >= step.probability) return;
+        const double gateFrac = std::max (0.05, step.gate / 100.0 * std::clamp (st.gate, 5, 100) / 100.0);
+        for (const auto& n : step.notes)
+        {
+            if (! n.used()) continue;
+            // Retrigger: end a still-sounding copy of the same note first.
+            for (int i = 0; i < pendingCount; ++i)
+                if (pending[i].note == n.note)
+                {
+                    emit ({ offset, SeqEvent::noteOff, n.note, 0, 0 });
+                    pending[i] = pending[--pendingCount];
+                    break;
+                }
+            emit ({ offset, SeqEvent::noteOn, n.note, n.velocity, stepIndex });
+            if (pendingCount < (int) pending.size())
+                pending[(size_t) pendingCount++] = { n.note, tk + (n.length - 1) + gateFrac };
+        }
+    }
     std::array<Pending, 128> pending {};
     int pendingCount = 0;
     uint32_t rng = 0x12345678u;
 
     uint32_t nextRandom() { rng ^= rng << 13; rng ^= rng >> 17; rng ^= rng << 5; return rng; }
-
-    static int toOffset (double at, double start, double stepsPerSample, int numSamples)
-    {
-        return std::clamp ((int) std::floor ((at - start) / stepsPerSample), 0, std::max (0, numSamples - 1));
-    }
 
     template <typename Emit>
     void releaseAll (int offset, Emit& emit)

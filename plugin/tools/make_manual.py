@@ -158,7 +158,8 @@ def build():
         ["Section", "Controls"],
         ["Joystick / Tune", "<b>Tune</b> slider (±100 cents, double-click to reset). <b>Joystick</b>: left/right bends pitch, "
                             "up adds vibrato (MG to DCO), down adds filter wobble (MG to VCF). It springs back when released. "
-                            "<b>BEND RANGE</b> &lt; / &gt; under it sets how far it bends (±1 to ±12 semitones)."],
+                            "<b>BEND RANGE</b> under it sets how far it bends (±1 to ±12 semitones): click &lt; / &gt;, drag the display "
+                            "up/right or down/left, or scroll over it."],
         ["Volume", "Master output level."],
         ["Key assign", "<b>POLY</b>: normal playing. <b>CHORD</b>: chord memory, each key plays a stored chord (section 4). "
                        "<b>HOLD</b>: notes keep sounding after you let go (the sustain pedal does the same). "
@@ -201,7 +202,8 @@ def build():
     s += [Paragraph("4. Playing", h1), Paragraph("Joystick and controllers", h2)]
     s += bullets([
         "<b>Joystick X</b> bends pitch by up to ±<b>Bend Range</b> semitones: 1-12, default 2. Set it with the <b>BEND RANGE</b> "
-        "&lt; / &gt; buttons under the joystick (it is also a host parameter, and is saved in presets).",
+        "&lt; / &gt; buttons under the joystick, by dragging its display (up or right for more, down or left for less), or "
+        "with the mouse wheel over it. It is also a host parameter, and is saved in presets.",
         "<b>Joystick up</b> adds MG vibrato to the DCOs; <b>down</b> adds MG movement to the filter. Both add to the "
         "program's own MG depths (P83/P84) and follow the MG speed (P81).",
         "Your keyboard's <b>pitch wheel</b> adds to joystick X, and its <b>mod wheel</b> (CC1) works like pushing the joystick up.",
@@ -283,7 +285,7 @@ def build():
         "<b>PATTERN</b> A to H. Patterns that hold something read brighter. While the sequencer is stopped a new pattern is "
         "chosen at once. While it plays, the change is <b>queued</b>: the chosen pattern blinks and the playing one "
         "(marked with an amber bar) finishes its last step first; the new pattern then starts from step 1.",
-        "<b>RATE</b> (click): step length, 1/8, 1/16, 1/32, 1/8T or 1/16T. <b>SWING</b> 50% (straight) to 75% delays every "
+        "<b>RATE</b> (click): step length, 1/2, 1/4, 1/8, 1/8T, 1/16, 1/16T or 1/32. <b>SWING</b> 50% (straight) to 75% delays every "
         "second step. <b>GATE</b> is how much of its last step a note sounds. Drag up/down or scroll to change them.",
         "<b>SYNC</b>: <b>HOST</b> follows your DAW's tempo and transport (the sequencer plays while the DAW plays, if PLAY is on); "
         "<b>INT</b> runs on its own clock at <b>BPM</b>, from step 1 when you press PLAY.",
@@ -313,8 +315,10 @@ def build():
         "<b>GATE</b>: how long the step's notes sound, as a percentage of the global GATE.",
         "<b>P-LOCK</b>: choose a parameter at the top of the lane, then drag a bar to lock that parameter to a value on "
         "that step. Any chart parameter can be locked, and so can the other assignable controls (in the "
-        "<i>Effect / Performance</i> part of the menu): Effect Speed, Effect Type, Volume, Tune and the joystick "
-        "(X bends the pitch, Y adds vibrato or filter movement). The menu marks parameters that have locks. Steps "
+        "<i>Effect / Performance / Sequencer</i> part of the menu): Effect Speed, Effect Type, Volume, Tune, the joystick "
+        "(X bends the pitch, Y adds vibrato or filter movement) and <b>Sequencer Rate</b>. A Sequencer Rate lock sets how "
+        "long that step lasts (1/2 at the bottom of the lane to 1/32 at the top, its bar labelled with the rate), so the "
+        "pattern can speed up, slow down or stutter; steps without it follow RATE. The menu marks parameters that have locks. Steps "
         "without a lock show a dash and use the panel value. Right-click or double-click removes a lock.",
         "<b>Resizing the lane</b>: drag the handle between the note grid and the lane up to make the lane taller (for "
         "finer values), or down to give the grid its room back. With a tall lane the grid shows one octave; use OCT to "

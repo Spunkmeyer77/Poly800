@@ -302,6 +302,35 @@ int main()
         check (stopped.playingPattern() == 2 && ! stopped.changeQueued(), "stopped: a change is immediate");
     }
 
+    { // 0.8.0: 1/4 and 1/2 rates, and the Sequencer Rate lock
+        auto stepTimes = [&] (SeqData d, long long samples)
+        {
+            SeqPlayer pl; pl.prepare (sr); pl.setData (d);
+            std::vector<long long> t;
+            for (auto& x : run (pl, samples, 256, {}, false)) if (x.e.type == SeqEvent::step) t.push_back (x.sample);
+            return t;
+        };
+        SeqData d; d.settings.hostSync = false; d.settings.bpm = 120;
+        d.settings.rate = 5; // 1/4: 24000 samples per step at 120 BPM
+        auto t = stepTimes (d, 24000 * 3 + 10);
+        check (t.size() == 4 && std::llabs (t[1] - 24000) <= 1 && std::llabs (t[3] - 72000) <= 1, "rate 1/4: a step per beat");
+        d.settings.rate = 6; // 1/2
+        t = stepTimes (d, 48000 * 2 + 10);
+        check (t.size() == 3 && std::llabs (t[1] - 48000) <= 1, "rate 1/2: a step every two beats");
+        check (seqRateOrderOf (6) == 0 && seqRateOrderOf (2) == 6, "rates ordered slowest (1/2) to fastest (1/32)");
+
+        SeqData l; l.settings.hostSync = false; l.settings.bpm = 120; l.settings.rate = 1; // 1/16 = 6000
+        const int slot = lockSlotOf ("seqRate");
+        l.setLock (1, slot, seqRateOrderOf (5));  // step 2 lasts a 1/4 note
+        l.setLock (3, slot, seqRateOrderOf (2));  // step 4 lasts a 1/32 note
+        t = stepTimes (l, 6000 * 2 + 24000 + 6000 + 3000 + 10);
+        check (t.size() >= 6 && std::llabs (t[1] - 6000) <= 1 && std::llabs (t[2] - 30000) <= 1
+                   && std::llabs (t[3] - 36000) <= 1 && std::llabs (t[4] - 39000) <= 1,
+               "Sequencer Rate lock changes that step's length (1/16, 1/4, 1/16, 1/32 ...)");
+        SeqData e; e.deserialise (l.serialise());
+        check (e.pat().steps[1].locks[(size_t) slot] == seqRateOrderOf (5), "rate locks are saved");
+    }
+
     std::printf (fails ? "\n%d failure(s)\n" : "\nall sequencer checks pass\n", fails);
     return fails ? 1 : 0;
 }

@@ -3,7 +3,7 @@
 AU / VST3 instrument by Ticco Ross (called P-800 up to 0.5.2), built on the ISLA Poly-800 synthesis core
 (`../src`). GPL-3.0-or-later, like the core.
 
-## Status: 0.7.0
+## Status: 0.8.0
 
 ![EX-800 panel](docs/panel.png)
 
@@ -46,7 +46,8 @@ AU / VST3 instrument by Ticco Ross (called P-800 up to 0.5.2), built on the ISLA
   lasted one block). 0.5.2: live recording keeps held notes' length, TIE/REST
   for step recording, lockable Effect Speed/Type, Volume, Tune and joystick,
   and the lane can be resized by dragging the splitter above it. 0.6.0: a pattern
-  change made while playing is queued until the playing pattern ends.
+  change made while playing is queued until the playing pattern ends. 0.8.0:
+  rates 1/4 and 1/2, and a lockable Sequencer Rate (per-step length).
 - Buttons: backlit-rubber style throughout.
 
 ## Core additions

@@ -242,6 +242,12 @@ void P800Editor::mouseDown (const juce::MouseEvent& e)
         case HitKind::vcfMode:  setReal ("vcfMode", state.vcfShared ? 0.0f : 1.0f); break;
         case HitKind::bendDown: setReal ("bendRange", (float) juce::jmax (1, state.bendRange - 1)); break;
         case HitKind::bendUp:   setReal ("bendRange", (float) juce::jmin (12, state.bendRange + 1)); break;
+        case HitKind::bendValue: // drag up or right for more, down or left for less
+            dragStartValue = state.bendRange;
+            dragStartX = d.x;
+            dragStartY = d.y;
+            param ("bendRange")->beginChangeGesture();
+            break;
         case HitKind::about:      state.showAbout = true; repaint(); break;
         case HitKind::aboutClose: state.showAbout = false; repaint(); break;
         case HitKind::aboutEmail:
@@ -297,6 +303,13 @@ void P800Editor::mouseDrag (const juce::MouseEvent& e)
         case HitKind::seqSplitter:
             seqMouseDrag (toDesign (e.position));
             break;
+        case HitKind::bendValue:
+        {
+            const auto d = toDesign (e.position);
+            const int v = juce::jlimit (1, 12, dragStartValue + juce::roundToInt (((d.x - dragStartX) - (d.y - dragStartY)) / 10.0f));
+            if (v != state.bendRange) { setReal ("bendRange", (float) v, false); refreshState(); }
+            break;
+        }
         default: break;
     }
 }
@@ -324,6 +337,7 @@ void P800Editor::mouseUp (const juce::MouseEvent&)
         case HitKind::tune:   param ("tune")->endChangeGesture(); break;
         case HitKind::chorusSpeed: param ("chorusSpeed")->endChangeGesture(); break;
         case HitKind::cell:   chartParam (dragHit.index)->endChangeGesture(); break;
+        case HitKind::bendValue: param ("bendRange")->endChangeGesture(); break;
         case HitKind::seqGrid: seqMouseUp(); break;
         default: break;
     }
@@ -338,6 +352,13 @@ void P800Editor::mouseWheelMove (const juce::MouseEvent& e, const juce::MouseWhe
     if (hit.kind == HitKind::seqSwing || hit.kind == HitKind::seqGate || hit.kind == HitKind::seqBpm)
     {
         seqWheel (hit, w.deltaY * (w.isReversed ? -1.0f : 1.0f) > 0 ? 1 : -1);
+        return;
+    }
+    if (hit.kind == HitKind::bendValue)
+    {
+        const int dir = w.deltaY * (w.isReversed ? -1.0f : 1.0f) > 0 ? 1 : -1;
+        setReal ("bendRange", (float) juce::jlimit (1, 12, state.bendRange + dir));
+        refreshState();
         return;
     }
     if (hit.kind != HitKind::cell)
@@ -766,7 +787,7 @@ void P800Editor::showRateMenu()
     juce::PopupMenu menu;
     menu.addSectionHeader ("Step length");
     for (int i = 0; i < p800::numSeqRates; ++i)
-        menu.addItem (i + 1, p800::seqRates[i].name, true, state.seq.data.settings.rate == i);
+        { const int r = p800::seqRateOrder[i]; menu.addItem (r + 1, p800::seqRates[r].name, true, state.seq.data.settings.rate == r); }
     juce::Component::SafePointer<P800Editor> safe (this);
     menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (this).withTargetScreenArea (screenAreaFor (view.seqRateArea())),
         [safe] (int r)
@@ -802,7 +823,7 @@ void P800Editor::showLockParamMenu()
         menu.addSubMenu (grp[0], sub);
     }
     {
-        // The other assignable controls: effect, volume, tune, joystick.
+        // The other assignable controls: effect, volume, tune, joystick, sequencer rate.
         juce::PopupMenu sub;
         for (int i = 0; i < p800::numLockExtras; ++i)
         {
@@ -811,7 +832,7 @@ void P800Editor::showLockParamMenu()
             if (d.patternHasLocksFor (slot)) label << "  " << juce::String (juce::CharPointer_UTF8 ("\xe2\x97\x8f"));
             sub.addItem (slot + 1, label, true, slot == state.seq.lockParam);
         }
-        menu.addSubMenu ("Effect / Performance", sub);
+        menu.addSubMenu ("Effect / Performance / Sequencer", sub);
     }
     menu.addSeparator();
     menu.addItem (1000, "Clear locks for " + juce::String (p800::lockSpec (state.seq.lockParam).name) + " in this pattern",

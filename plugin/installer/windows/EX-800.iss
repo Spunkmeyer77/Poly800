@@ -1,9 +1,9 @@
 ; Inno Setup script for the EX-800 VST3 on Windows.
 ; Built by .github/workflows/poly800-windows-linux.yml:
-;   iscc /DAppVersion=0.7.0 /DSrcDir=<repo> plugin\installer\windows\EX-800.iss
+;   iscc /DAppVersion=0.8.0 /DSrcDir=<repo> plugin\installer\windows\EX-800.iss
 
 #ifndef AppVersion
-  #define AppVersion "0.7.0"
+  #define AppVersion "0.8.0"
 #endif
 #ifndef SrcDir
   #define SrcDir "..\..\.."

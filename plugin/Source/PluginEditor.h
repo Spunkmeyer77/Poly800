@@ -63,7 +63,7 @@ private:
 
     p800::Hit dragHit;
     int dragStartValue = 0;
-    float dragStartY = 0.0f;
+    float dragStartY = 0.0f, dragStartX = 0.0f;
     float dragAccum = 0.0f;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (P800Editor)

@@ -338,6 +338,7 @@ Hit PanelView::hitTest (juce::Point<float> p, const PanelState& st) const
     if (vcfModeR.contains (p)) return { HitKind::vcfMode };
     if (bendDownR.contains (p)) return { HitKind::bendDown };
     if (bendUpR.contains (p)) return { HitKind::bendUp };
+    if (bendValueR.contains (p)) return { HitKind::bendValue };
     if (seqBtnR.contains (p)) return { HitKind::seqToggle };
     if (playBtnR.contains (p)) return { HitKind::seqPlay };
     if (st.seq.visible && juce::Rectangle<float> (22, 414, 1396, 364).contains (p))
@@ -896,7 +897,9 @@ void PanelView::paintSequencer (juce::Graphics& g, const PanelState& s) const
             if (v == kNoLock) { drawText (g, "-", col, uiFont (12.0f), cDim.withAlpha (0.5f)); continue; }
             const auto spec = lockSpec (q.lockParam);
             f = (float) (v - spec.minValue) / (float) juce::jmax (1, spec.maxValue - spec.minValue);
-            label = juce::String (v);
+            label = lockSpec (q.lockParam).number == 0 && q.lockParam == lockSlotOf ("seqRate")
+                        ? juce::String (seqRates[seqRateOrder[juce::jlimit (0, numSeqRates - 1, v)]].name)
+                        : juce::String (v);
         }
         else
         {

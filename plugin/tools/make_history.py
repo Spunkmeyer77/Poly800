@@ -102,6 +102,12 @@ HISTORY = [
         ("The About window and manual now say EX-800 is modelled on the Korg EX-800.", []),
         ("The manual is updated.", []),
     ]),
+    ("0.8.0: Sequencer rates", [
+        ("New sequencer rates <b>1/4</b> and <b>1/2</b>.", []),
+        ("<b>Sequencer Rate</b> can be parameter-locked, so each step can have its own length.", []),
+        ("The BEND RANGE display can also be set by dragging it with the mouse, or with the mouse wheel.", []),
+        ("The manual is updated.", []),
+    ]),
 ]
 
 
