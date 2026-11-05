@@ -4,7 +4,7 @@
 
 Current project version: **0.6.0 — M6 ROM-grounded control engine**.
 
-ISLA Poly-800 is not intended to be a generic subtractive synth that merely resembles a Poly-800. The project goal is narrower and harder: reproduce the original instrument's architecture, control laws, factory data and audible behaviour as closely as the surviving technical evidence allows, while keeping every buildable dependency free/open source and every remaining approximation explicit.
+EX-800 is not intended to be a generic subtractive synth that merely resembles a Poly-800. The project goal is narrower and harder: reproduce the original instrument's architecture, control laws, factory data and audible behaviour as closely as the surviving technical evidence allows, while keeping every buildable dependency free/open source and every remaining approximation explicit.
 
 The result is a compact native LV2 instrument for Ardour and other GNU/Linux hosts, with the original sound-program parameter surface, the complete 64-program MkI factory bank, and a synthesis core whose most characteristic digital control behaviour is now derived from the EX-800 firmware itself.
 
