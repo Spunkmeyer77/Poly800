@@ -213,7 +213,7 @@ Git history and the `m6-rom-mg` branch preserve the transition from the Bristol-
 
 ## Provenance and licensing
 
-ISLA Poly-800 is **GPL-3.0-or-later**.
+EX-800 is **GPL-3.0-or-later**.
 
 Bristol-derived/adapted portions retain attribution to Nick Copeland and GPL-compatible licensing. Project-original reverse-engineering interpretation, wrapper code, cassette decoder, tests and documentation are part of this repository under the project license.
 
