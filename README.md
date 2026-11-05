@@ -1,4 +1,4 @@
-# ISLA Poly-800
+# EX-800
 
 **A ROM-grounded, hardware-informed, fully open-source LV2 reconstruction of the Korg Poly-800 MkI / EX-800 synthesis engine for GNU/Linux.**
 
